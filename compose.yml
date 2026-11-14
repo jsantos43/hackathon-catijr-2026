@@ -1,4 +1,3 @@
-# Ambiente de desenvolvimento: postgres, minio e a API (código montado de ./api, sem build).
 name: leilao
 
 services:
@@ -16,6 +15,20 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -56,6 +69,7 @@ services:
     # os serviços se chamam pelo nome.
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-leilao}:${POSTGRES_PASSWORD:-leilao}@postgres:5432/${POSTGRES_DB:-leilao}?schema=public
+      REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
       PRISMA_HIDE_UPDATE_MESSAGE: "1"
       S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
@@ -65,10 +79,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       minio:
         condition: service_started
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_data:
   minio_data:
