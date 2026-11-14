@@ -2,7 +2,8 @@ import type { Auction, AuctionStatus, Category, Paginated } from '../types';
 import api from './api';
 
 /** Ordenação feita no servidor (GET /auction/all?sort=). */
-export type AuctionSort = 'ends' | 'starts' | 'price' | 'bids';
+/** live: em andamento (termina primeiro) e depois agendados (começa primeiro). */
+export type AuctionSort = 'live' | 'ends' | 'starts' | 'price' | 'bids';
 
 export interface ListQuery {
   q?: string;

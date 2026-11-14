@@ -84,7 +84,7 @@ export default function MeusLeiloes() {
     if (act.off) return;
     if (act.key === 'edit' || act.key === 'append') setEditing({ auction: a, mode: act.key });
     if (act.key === 'cancel') setCancelling(a);
-    if (act.key === 'relist') navigate(`/anunciar?relistar=${a.id}`);
+    if (act.key === 'relist') navigate(`/anunciar/leilao?relistar=${a.id}`);
   };
 
   return (

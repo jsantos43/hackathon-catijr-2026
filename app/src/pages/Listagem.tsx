@@ -1,7 +1,8 @@
-import { Search } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AuctionCard from '../components/AuctionCard';
+import CategoryPicker from '../components/CategoryPicker';
 import { ErrorState, Spinner } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { useNow } from '../hooks/useNow';
@@ -10,13 +11,8 @@ import { errorMessage } from '../services/api';
 import { auctionService, type AuctionSort } from '../services/auctionService';
 import type { Auction, AuctionStatus, Category } from '../types';
 
-type StateFilter = 'todos' | 'live' | 'sched';
-
-const STATE_TO_STATUS: Record<StateFilter, AuctionStatus[]> = {
-  todos: ['RUNNING', 'SCHEDULED'],
-  live: ['RUNNING'],
-  sched: ['SCHEDULED'],
-};
+/** A vitrine sempre mostra os abertos: primeiro os Em andamento, depois os Agendados. */
+const OPEN_STATUSES: AuctionStatus[] = ['RUNNING', 'SCHEDULED'];
 
 const PAGE_SIZE = 12;
 
@@ -26,9 +22,12 @@ export default function Listagem() {
   const [params, setParams] = useSearchParams();
 
   const q = params.get('q') ?? '';
-  const st = (params.get('estado') as StateFilter) || 'todos';
-  const cat = (params.get('categoria') as Category | null) ?? null;
-  const [sort, setSort] = useState<AuctionSort>('ends');
+  const catParam = params.get('categoria') ?? '';
+  const cats = useMemo(
+    () => catParam.split(',').filter((c): c is Category => (CATEGORIES as string[]).includes(c)),
+    [catParam],
+  );
+  const [sort, setSort] = useState<AuctionSort>('live');
   const [search, setSearch] = useState(q);
 
   const [auctions, setAuctions] = useState<Auction[]>([]);
@@ -69,7 +68,7 @@ export default function Listagem() {
     setLoading(true);
     setError(null);
     auctionService
-      .list({ q, status: STATE_TO_STATUS[st], category: cat ? [cat] : undefined, sort, page, pageSize: PAGE_SIZE })
+      .list({ q, status: OPEN_STATUSES, category: cats.length ? cats : undefined, sort, page, pageSize: PAGE_SIZE })
       .then((r) => {
         if (!active) return;
         setAuctions((prev) => (page === 1 ? r.items : [...prev, ...r.items.filter((a) => !prev.some((p) => p.id === a.id))]));
@@ -80,7 +79,7 @@ export default function Listagem() {
     return () => {
       active = false;
     };
-  }, [q, st, cat, sort, page, retry]);
+  }, [q, cats, sort, page, retry]);
 
   // A ordem vem do servidor (?sort=). Leilões que acabaram de encerrar somem sem recarregar.
   const visible = useMemo(
@@ -88,7 +87,7 @@ export default function Listagem() {
     [auctions, now],
   );
 
-  const stateLabel = st === 'live' ? 'em andamento' : st === 'sched' ? 'agendados' : 'agendados e em andamento';
+  const setCats = (next: Category[]) => setParam('categoria', next.length ? next.join(',') : null);
 
   return (
     <main className="page">
@@ -107,13 +106,12 @@ export default function Listagem() {
         <span className="small muted">Horários no seu fuso: {timezoneLabel()}</span>
       </section>
 
-      <section aria-label="Busca e filtros" className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div className="row wrap">
-          <div
-            className="money-input"
-            style={{ flex: '1 1 320px', height: 48, borderRadius: 12 }}
-          >
-            <Search size={18} color="var(--ink-2)" aria-hidden />
+      <section aria-label="Busca e filtros" className="stack" style={{ gap: 12 }}>
+        <div className="search-bar">
+          <CategoryPicker value={cats} onChange={setCats} />
+          <span className="search-divider" aria-hidden />
+          <div className="search-field">
+            <Search size={20} color="var(--ink-2)" aria-hidden />
             <label htmlFor="ls-busca" className="sr-only">
               Buscar leilões
             </label>
@@ -125,49 +123,50 @@ export default function Listagem() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="segmented" role="group" aria-label="Estado">
-            {(
-              [
-                ['todos', 'Todos'],
-                ['live', 'Em andamento'],
-                ['sched', 'Agendados'],
-              ] as [StateFilter, string][]
-            ).map(([id, label]) => (
-              <button key={id} type="button" aria-pressed={st === id} onClick={() => setParam('estado', id === 'todos' ? null : id)}>
-                {label}
+        </div>
+
+        <div className="row wrap between" style={{ gap: 12 }}>
+          <div className="chips" aria-label="Categorias escolhidas">
+            {cats.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className="chip chip-remove"
+                aria-pressed="true"
+                aria-label={`Remover categoria ${CATEGORY_LABEL[c]}`}
+                onClick={() => setCats(cats.filter((v) => v !== c))}
+              >
+                {CATEGORY_LABEL[c]}
+                <X size={14} aria-hidden />
               </button>
             ))}
+            {cats.length > 1 && (
+              <button type="button" className="link-btn" onClick={() => setCats([])}>
+                Limpar categorias
+              </button>
+            )}
           </div>
-          <div className="row" style={{ gap: 8 }}>
+          <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
             <label htmlFor="ls-ordem" className="small muted">
               Ordenar
             </label>
             <select
               id="ls-ordem"
               className="select"
-              style={{ height: 48, borderRadius: 12, width: 'auto' }}
+              style={{ width: 'auto' }}
               value={sort}
               onChange={(e) => {
                 setSort(e.target.value as AuctionSort);
                 setPage(1); // ordem nova começa da primeira página
               }}
             >
+              <option value="live">Ao vivo primeiro</option>
               <option value="ends">Terminam primeiro</option>
               <option value="starts">Começam primeiro</option>
               <option value="price">Menor preço</option>
               <option value="bids">Mais lances</option>
             </select>
           </div>
-        </div>
-        <div className="chips" role="group" aria-label="Categoria">
-          <button type="button" className="chip" aria-pressed={!cat} onClick={() => setParam('categoria', null)}>
-            Todas
-          </button>
-          {CATEGORIES.map((c) => (
-            <button key={c} type="button" className="chip" aria-pressed={cat === c} onClick={() => setParam('categoria', c)}>
-              {CATEGORY_LABEL[c]}
-            </button>
-          ))}
         </div>
       </section>
 
@@ -178,7 +177,7 @@ export default function Listagem() {
           <span className="small muted" aria-live="polite">
             {loading && page === 1
               ? 'Buscando leilões…'
-              : `${plural(total, 'leilão encontrado', 'leilões encontrados')} · ${stateLabel}`}
+              : plural(total, 'leilão encontrado', 'leilões encontrados')}
           </span>
 
           {visible.length > 0 && (
