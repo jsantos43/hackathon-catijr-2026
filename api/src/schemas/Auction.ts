@@ -10,8 +10,7 @@ const startingPriceCents = z
   .min(100, 'Starting price must be at least R$ 1,00')
   .max(MAX_PRICE_CENTS);
 
-// ISO 8601 com fuso (ex.: "2026-11-14T18:00:00Z" ou "...-03:00"): o instante é o mesmo
-// para todo mundo, qualquer que seja o fuso de quem enviou (RF19).
+// ISO 8601 com fuso (ex.: "2026-11-14T18:00:00Z" ou "...-03:00")
 const startsAt = z.iso.datetime({ offset: true, error: 'startsAt must be an ISO date with timezone' }).transform((v) => new Date(v));
 
 const durationSeconds = z
@@ -26,7 +25,6 @@ export const AUCTION_DESCRIPTION_MAX = 3000;
 const title = z.string().trim().min(3, 'Title must be at least 3 characters').max(AUCTION_TITLE_MAX);
 const description = z.string().trim().max(AUCTION_DESCRIPTION_MAX).default('');
 
-// O lote: um ou mais itens do próprio usuário, na ordem em que aparecem no leilão.
 const itemIds = z
   .array(z.uuid('itemIds must contain valid UUIDs'))
   .min(1, 'Send at least one item')
@@ -44,9 +42,6 @@ export const createAuctionSchema = z.object({
 
 export type CreateAuctionData = z.infer<typeof createAuctionSchema>;
 
-// RF23: o que pode mudar depende do estado (ver services/Auction.ts).
-// - Agendado com mais de 30 min: todos os campos, inclusive os itens do lote.
-// - Em andamento: só acrescentar texto à descrição do leilão.
 export const updateAuctionSchema = z
   .object({
     title: title.exactOptional(),
