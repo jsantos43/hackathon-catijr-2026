@@ -23,6 +23,24 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+
+  // RF05/RF06: limites de leilão e fotos. Ficam no .env para a demo poder usar leilões curtos
+  // (ex.: AUCTION_MIN_LEAD_SECONDS=60 e AUCTION_MIN_DURATION_SECONDS=180). Tempos em segundos.
+  AUCTION_MIN_LEAD_SECONDS: z.coerce.number().int().nonnegative().default(60),
+  AUCTION_MAX_LEAD_SECONDS: z.coerce.number().int().positive().default(30 * 24 * 60 * 60),
+  AUCTION_MIN_DURATION_SECONDS: z.coerce.number().int().positive().default(60),
+  AUCTION_MAX_DURATION_SECONDS: z.coerce.number().int().positive().default(7 * 24 * 60 * 60),
+  // RF23: a menos disso do início, um leilão agendado não pode mais ser editado.
+  AUCTION_EDIT_LOCK_SECONDS: z.coerce.number().int().nonnegative().default(30 * 60),
+  // Intervalo do processo que abre/fecha leilões (RF17/RF18).
+  AUCTION_TICK_MS: z.coerce.number().int().positive().default(1000),
+
+  // Quantos itens um lote (leilão) pode ter.
+  AUCTION_MAX_ITEMS: z.coerce.number().int().positive().default(10),
+
+  ITEM_MIN_PHOTOS: z.coerce.number().int().positive().default(3),
+  ITEM_MAX_PHOTOS: z.coerce.number().int().positive().default(10),
+  PHOTO_MAX_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
 });
 
 const parsed = envSchema.safeParse(process.env);

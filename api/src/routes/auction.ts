@@ -2,50 +2,59 @@ import { Router } from 'express';
 import Controller from '../controllers/Auction.js';
 import auth from '../middlewares/auth.js';
 import validate from '../middlewares/validate.js';
-import { createAutctionSchema, auctionIdSchema, updateAuctionSchema } from '../schemas/Auction.js';
+import {
+  auctionIdSchema,
+  createAuctionSchema,
+  listAuctionsSchema,
+  myAuctionsSchema,
+  updateAuctionSchema,
+} from '../schemas/Auction.js';
 
 const router = Router();
 
+// RF04: listagens e detalhe são públicos; entrar na sala (socket) é que exige login.
+// A posse do leilão é conferida no service.
 router
   .get(
     '/auction/my',
     auth('logged'),
-    Controller.readAll // Ler todos os leilões que usuário
+    validate(myAuctionsSchema, 'query'),
+    Controller.listOwn // Leilões que o usuário criou
   )
   .get(
     '/auction/history',
     auth('logged'),
-    Controller.readAll // Ler todos os leilões que usuário
+    validate(myAuctionsSchema, 'query'),
+    Controller.listWon // Leilões que o usuário venceu
   )
   .get(
     '/auction/all',
-    auth('logged'),
-    Controller.readAll // Ler todos os leilões do sistema com req queries
+    validate(listAuctionsSchema, 'query'),
+    Controller.list // ?q=&category=ART,HOME&status=RUNNING&ownerId=&page=&pageSize=
   )
   .get(
     '/auction/:id',
-    auth('logged'), // opcional
-    validate(auctionIdSchema, 'params'), // Lê qualquer leilão do sistema
+    validate(auctionIdSchema, 'params'),
     Controller.readById
   )
   .post(
     '/auction',
     auth('logged'),
     validate(createAuctionSchema),
-    Controller.create
+    Controller.create // Também serve para relistar um item (RF28)
   )
   .put(
-    '/item/:id',
-    auth('auction:own'),
+    '/auction/:id',
+    auth('logged'),
     validate(auctionIdSchema, 'params'),
     validate(updateAuctionSchema),
     Controller.update,
   )
   .delete(
-    '/item/:id',
-    auth('auction:own'),
+    '/auction/:id',
+    auth('logged'),
     validate(auctionIdSchema, 'params'),
-    Controller.delete
+    Controller.cancel // Não apaga: marca como Cancelado (RF08)
   );
 
 export default router;

@@ -37,3 +37,6 @@ export const uniqueViolationField = (err: unknown): string | undefined => {
 
 /** Registro não encontrado em update/delete (P2025). */
 export const isRecordNotFound = (err: unknown) => isKnownError(err, 'P2025');
+
+/** Violação de chave estrangeira (P2003): o registro ainda é usado por outro. */
+export const isForeignKeyViolation = (err: unknown) => isKnownError(err, 'P2003');

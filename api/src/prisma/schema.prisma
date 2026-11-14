@@ -9,6 +9,26 @@ datasource db {
   provider = "postgresql"
 }
 
+enum AuctionStatus {
+  SCHEDULED
+  RUNNING
+  SOLD
+  ENDED_NO_BIDS
+  CANCELLED
+}
+
+enum Category {
+  ELECTRONICS
+  FASHION
+  HOME
+  VEHICLES
+  ART
+  COLLECTIBLES
+  SPORTS
+  BOOKS
+  OTHER
+}
+
 model User {
   id                  String    @id @default(uuid()) @db.Uuid
   email               String    @unique
@@ -19,4 +39,71 @@ model User {
   refreshTokenExpires DateTime? @db.Timestamptz(3)
   createdAt           DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+
+  items           Item[]
+  auctions        Auction[] @relation("AuctionOwner")
+  wonAuctions     Auction[] @relation("AuctionWinner")
+}
+
+model Item {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerId     String   @db.Uuid
+  name        String
+  description String
+  category    Category
+  images      String[] // Array de strings indicando as chaves das imagens
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  owner    User          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  auctions AuctionItem[]
+
+  @@index([ownerId])
+}
+
+model Auction {
+  id          String        @id @default(uuid()) @db.Uuid
+  ownerId     String        @db.Uuid
+  title       String
+  description String
+  status      AuctionStatus @default(SCHEDULED)
+
+  startingPriceCents Int
+  bidCount           Int     @default(0)
+
+  startsAt       DateTime @db.Timestamptz(3)
+  originalEndsAt DateTime @db.Timestamptz(3)
+  endsAt         DateTime @db.Timestamptz(3)
+
+  // Em andamento: líder e preço atuais (atualizados a cada lance aceito).
+  // Depois do fechamento: vencedor e valor pago (Vendido) ou null (Encerrado sem lances).
+  winnerId        String?   @db.Uuid
+  finalPriceCents Int?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  items  AuctionItem[]
+  owner  User          @relation("AuctionOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  winner User?         @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: Restrict)
+
+  // Usados pelo processo que abre/fecha leilões e pela listagem.
+  @@index([status, startsAt])
+  @@index([status, endsAt])
+  @@index([ownerId])
+  @@index([winnerId])
+}
+
+// Itens de cada lote. `position` é a ordem de exibição no leilão (o primeiro é a capa).
+model AuctionItem {
+  auctionId String @db.Uuid
+  itemId    String @db.Uuid
+  position  Int
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  item    Item    @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@id([auctionId, itemId])
+  @@unique([auctionId, position])
+  @@index([itemId])
 }

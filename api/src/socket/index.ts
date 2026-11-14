@@ -12,6 +12,29 @@ export let io: Server<any, any, any, SocketData>;
 
 export const auctionRoom = (auctionId: string) => `auction:${auctionId}`;
 
+export type AuctionStatusEvent = {
+  id: string;
+  status: string;
+  endsAt: Date;
+  winnerId: string | null;
+  finalPriceCents: number | null;
+};
+
+/**
+ * Avisa a sala que o leilão mudou de estado (abriu, foi vendido, encerrou sem lances ou foi
+ * cancelado). Só é chamado depois que a mudança foi gravada no banco.
+ */
+export const emitAuctionStatus = (auction: AuctionStatusEvent) => {
+  io?.to(auctionRoom(auction.id)).emit('auction:status', {
+    auctionId: auction.id,
+    status: auction.status,
+    endsAt: auction.endsAt,
+    winnerId: auction.winnerId,
+    finalPriceCents: auction.finalPriceCents,
+    serverTime: new Date().toISOString(),
+  });
+};
+
 const joinSchema = z.object({ auctionId: z.uuid() });
 
 export function setupSocket(server: HttpServer) {
