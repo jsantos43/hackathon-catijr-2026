@@ -8,7 +8,9 @@ const envSchema = z.object({
   DATABASE_URL: z.url(),
 
   JWT_SECRET: z.string().min(16, "JWT_SECRET precisa ter pelo menos 16 caracteres"),
-  JWT_EXPIRES_IN: z.string().default("2h"),
+  // Em segundos. Access token curto; o refresh token renova a sessão com o uso (RF02).
+  ACCESS_TOKEN_TTL: z.coerce.number().int().positive().default(15 * 60),
+  REFRESH_TOKEN_TTL: z.coerce.number().int().positive().default(7 * 24 * 60 * 60),
 
   S3_ENDPOINT: z.url(),
   // URL que o navegador usa para baixar as fotos (no compose, o endpoint interno é http://minio:9000).
@@ -30,4 +32,10 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+export const env = {
+  ...parsed.data,
+  isProd: parsed.data.NODE_ENV === "production",
+  jwtSecret: parsed.data.JWT_SECRET,
+  accessTokenTtl: parsed.data.ACCESS_TOKEN_TTL,
+  refreshTokenTtl: parsed.data.REFRESH_TOKEN_TTL,
+};

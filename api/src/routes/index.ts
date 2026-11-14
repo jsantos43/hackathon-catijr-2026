@@ -1,10 +1,14 @@
-import { Router } from "express";
-import { prisma } from "../lib/prisma.js";
+import type { Express, Request, Response } from 'express';
+import auth from './auth.js';
+import user from './user.js';
 
-export const routes = Router();
+const routes = (app: Express) => {
+  // Health check + horário do servidor (o relógio que vale é o do servidor, RF16).
+  app.get('/', (_req: Request, res: Response) => {
+    res.json({ mensagem: 'Olá, mundo!', serverTime: new Date().toISOString() });
+  });
 
-// Health check + horário do servidor (o relógio que vale é o do servidor, RF16).
-routes.get("/health", async (_req, res) => {
-  await prisma.$queryRaw`SELECT 1`;
-  res.json({ status: "ok", serverTime: new Date().toISOString() });
-});
+  app.use(user, auth);
+};
+
+export default routes;

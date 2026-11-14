@@ -1,29 +1,23 @@
-import type { NextFunction, Request, Response } from "express";
-import { UnauthorizedError } from "../errors/app-error.js";
-import { verifyToken, type TokenPayload } from "../lib/jwt.js";
+import type { NextFunction, Request, Response } from 'express';
+import { Forbidden } from '../errors/index.js';
+import Service, { type Permission } from '../services/Auth.js';
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: TokenPayload;
+const auth =
+  (permission: Permission) =>
+  async (req: Request<{ id?: string }>, res: Response, next: NextFunction) => {
+    try {
+      const { user, sessionVersion } = await Service.authenticate(req.cookies?.['accessToken']);
+
+      req.user = user;
+      req.sessionVersion = sessionVersion;
+
+      const authorized = await Service.checkPermission(user, permission, req.params.id);
+      if (!authorized) throw new Forbidden(`You need the "${permission}" permission`);
+
+      return next();
+    } catch (err) {
+      return next(err);
     }
-  }
-}
+  };
 
-export function extractBearer(header: string | undefined) {
-  if (!header?.startsWith("Bearer ")) return null;
-  return header.slice("Bearer ".length).trim() || null;
-}
-
-export function requireAuth(req: Request, _res: Response, next: NextFunction) {
-  const token = extractBearer(req.headers.authorization);
-  if (!token) throw new UnauthorizedError("Token não informado");
-
-  try {
-    req.user = verifyToken(token);
-  } catch {
-    throw new UnauthorizedError();
-  }
-
-  next();
-}
+export default auth;
