@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import Controller from '../controllers/Auction.js';
-import auth from '../middlewares/auth.js';
-import validate from '../middlewares/validate.js';
+import Auth from '../middlewares/Auth.js';
+import Validate from '../middlewares/Validate.js';
 import {
   auctionIdSchema,
   createAuctionSchema,
@@ -14,46 +14,47 @@ const router = Router();
 
 // RF04: listagens e detalhe são públicos; entrar na sala (socket) é que exige login.
 // A posse do leilão é conferida no service.
+// Atenção à ordem: rotas fixas (/auction/my, /auction/all...) antes de /auction/:id.
 router
   .get(
     '/auction/my',
-    auth('logged'),
-    validate(myAuctionsSchema, 'query'),
+    Auth.require('logged'),
+    Validate.query(myAuctionsSchema),
     Controller.listOwn // Leilões que o usuário criou
   )
   .get(
     '/auction/history',
-    auth('logged'),
-    validate(myAuctionsSchema, 'query'),
+    Auth.require('logged'),
+    Validate.query(myAuctionsSchema),
     Controller.listWon // Leilões que o usuário venceu
   )
   .get(
     '/auction/all',
-    validate(listAuctionsSchema, 'query'),
-    Controller.list // ?q=&category=ART,HOME&status=RUNNING&ownerId=&page=&pageSize=
+    Validate.query(listAuctionsSchema),
+    Controller.list // ?q=&category=ART,HOME&status=RUNNING&ownerId=&sort=ends&page=&pageSize=
   )
   .get(
     '/auction/:id',
-    validate(auctionIdSchema, 'params'),
+    Validate.params(auctionIdSchema),
     Controller.readById
   )
   .post(
     '/auction',
-    auth('logged'),
-    validate(createAuctionSchema),
+    Auth.require('logged'),
+    Validate.body(createAuctionSchema),
     Controller.create // Também serve para relistar um item (RF28)
   )
   .put(
     '/auction/:id',
-    auth('logged'),
-    validate(auctionIdSchema, 'params'),
-    validate(updateAuctionSchema),
-    Controller.update,
+    Auth.require('logged'),
+    Validate.params(auctionIdSchema),
+    Validate.body(updateAuctionSchema),
+    Controller.update
   )
   .delete(
     '/auction/:id',
-    auth('logged'),
-    validate(auctionIdSchema, 'params'),
+    Auth.require('logged'),
+    Validate.params(auctionIdSchema),
     Controller.cancel // Não apaga: marca como Cancelado (RF08)
   );
 

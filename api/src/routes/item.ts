@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import Controller from '../controllers/Item.js';
-import auth from '../middlewares/auth.js';
-import uploadImages from '../middlewares/uploadImages.js';
-import validate from '../middlewares/validate.js';
+import Auth from '../middlewares/Auth.js';
+import Upload from '../middlewares/Upload.js';
+import Validate from '../middlewares/Validate.js';
 import { createItemSchema, itemIdSchema, updateItemSchema } from '../schemas/Item.js';
 
 const router = Router();
 
 // Criar e editar item usam multipart/form-data: campos de texto + fotos no campo `images`.
-// A posse do item é conferida no service (o middleware auth só sabe comparar com o id do usuário).
+// A posse do item é conferida no service.
 router
   .get(
     '/item/categories',
@@ -16,35 +16,35 @@ router
   )
   .get(
     '/item',
-    auth('logged'),
-    Controller.readItems // Ler todos os itens do próprio usuário
+    Auth.require('logged'),
+    Controller.readItems // Todos os itens do próprio usuário
   )
   .get(
     '/item/:id',
-    auth('logged'),
-    validate(itemIdSchema, 'params'), // Lê um item do próprio usuário
-    Controller.readById
+    Auth.require('logged'),
+    Validate.params(itemIdSchema),
+    Controller.readById // Um item do próprio usuário
   )
   .post(
     '/item',
-    auth('logged'),
-    uploadImages({ required: true }),
-    validate(createItemSchema),
+    Auth.require('logged'),
+    Upload.images({ required: true }),
+    Validate.body(createItemSchema),
     Controller.create
   )
   .put(
     '/item/:id',
-    auth('logged'),
-    validate(itemIdSchema, 'params'),
-    uploadImages({ required: false }), // Se mandar fotos, substituem todas as atuais
-    validate(updateItemSchema),
-    Controller.update,
+    Auth.require('logged'),
+    Validate.params(itemIdSchema),
+    Upload.images({ required: false }), // Se mandar fotos, substituem todas as atuais
+    Validate.body(updateItemSchema),
+    Controller.update
   )
   .delete(
     '/item/:id',
-    auth('logged'),
-    validate(itemIdSchema, 'params'), // Só itens que nunca foram leiloados
-    Controller.delete
+    Auth.require('logged'),
+    Validate.params(itemIdSchema),
+    Controller.delete // Só itens que nunca foram leiloados
   );
 
 export default router;

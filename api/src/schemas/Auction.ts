@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { AuctionStatus, Category } from '../generated/prisma/enums.js';
 
-const MAX_PRICE_CENTS = 1_000_000_000;
+export const MAX_PRICE_CENTS = 1_000_000_000;
 
 const startingPriceCents = z
   .number('startingPriceCents must be a number of cents')
@@ -68,6 +68,9 @@ const csvOf = <T extends z.ZodType<unknown, string>>(schema: T) =>
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean))
     .pipe(z.array(schema).min(1));
 
+export const AUCTION_SORTS = ['ends', 'starts', 'price', 'bids'] as const;
+export type AuctionSort = (typeof AUCTION_SORTS)[number];
+
 // RF20/RF21: listagem pública com filtros combináveis.
 export const listAuctionsSchema = z.object({
   q: z.string().trim().min(1).max(80).optional(),
@@ -75,6 +78,8 @@ export const listAuctionsSchema = z.object({
   // Por padrão só mostra o que ainda está aberto (agendados e em andamento).
   status: csvOf(z.enum(AuctionStatus)).default([AuctionStatus.RUNNING, AuctionStatus.SCHEDULED]),
   ownerId: z.uuid().optional(),
+  // ends: termina primeiro · starts: começa primeiro · price: menor preço atual · bids: mais lances
+  sort: z.enum(AUCTION_SORTS).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
 });

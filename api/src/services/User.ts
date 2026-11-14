@@ -3,22 +3,7 @@ import { db } from '../prisma/db.js';
 import type { CreateUserData, UpdateUserData } from '../schemas/User.js';
 import { isRecordNotFound } from '../utils/dbErrors.js';
 import { hash } from '../utils/hash.js';
-
-// Dados do próprio usuário (nunca inclui senha nem tokens).
-export const privateUserSelect = {
-  id: true,
-  email: true,
-  name: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
-
-// Dados que qualquer pessoa pode ver de outro usuário (sem e-mail).
-export const publicUserSelect = {
-  id: true,
-  name: true,
-  createdAt: true,
-} as const;
+import { privateUserSelect, publicUserSelect } from '../views/user.js';
 
 const rethrowNotFound = (err: unknown): never => {
   if (isRecordNotFound(err)) throw new NotFound('User not found');

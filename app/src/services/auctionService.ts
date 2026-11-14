@@ -1,8 +1,12 @@
 import type { Auction, AuctionStatus, Category, Paginated } from '../types';
 import api from './api';
 
+/** Ordenação feita no servidor (GET /auction/all?sort=). */
+export type AuctionSort = 'ends' | 'starts' | 'price' | 'bids';
+
 export interface ListQuery {
   q?: string;
+  sort?: AuctionSort;
   category?: Category[];
   status?: AuctionStatus[];
   ownerId?: string;
@@ -23,6 +27,7 @@ const toParams = (q: ListQuery) => ({
   category: q.category?.length ? q.category.join(',') : undefined,
   status: q.status?.length ? q.status.join(',') : undefined,
   ownerId: q.ownerId,
+  sort: q.sort,
   page: q.page,
   pageSize: q.pageSize,
 });

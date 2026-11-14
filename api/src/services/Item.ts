@@ -5,46 +5,10 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { AuctionStatus } from '../generated/prisma/enums.js';
 import { db } from '../prisma/db.js';
 import type { CreateItemData, UpdateItemData } from '../schemas/Item.js';
-import { deleteObjects, publicUrl, uploadItemImages } from '../utils/storage.js';
+import { deleteObjects, uploadItemImages } from '../utils/storage.js';
+import { itemSelect, ownItemSelect, serializeItem, serializeOwnItem } from '../views/item.js';
 
 type Tx = Prisma.TransactionClient;
-
-export const itemSelect = {
-  id: true,
-  ownerId: true,
-  name: true,
-  description: true,
-  category: true,
-  images: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
-
-/** Troca as chaves do bucket pelas URLs públicas que o navegador usa. */
-export const serializeItem = <T extends { images: string[] }>(item: T) => ({
-  ...item,
-  images: item.images.map(publicUrl),
-});
-
-// Os leilões (lotes) de que o item já participou, do mais recente para o mais antigo.
-const ownItemWithAuctions = {
-  ...itemSelect,
-  auctions: {
-    select: {
-      auction: {
-        select: { id: true, title: true, status: true, startsAt: true, endsAt: true, finalPriceCents: true },
-      },
-    },
-    orderBy: { auction: { createdAt: 'desc' } },
-  },
-} as const satisfies Prisma.ItemSelect;
-
-type OwnItemRow = Prisma.ItemGetPayload<{ select: typeof ownItemWithAuctions }>;
-
-const serializeOwnItem = ({ auctions, ...item }: OwnItemRow) => ({
-  ...serializeItem(item),
-  auctions: auctions.map((a) => a.auction),
-});
 
 /**
  * Trava as linhas dos itens até o fim da transação. Criar/editar leilão e editar item passam
@@ -97,7 +61,7 @@ class Item {
   static async readOwn(userId: string) {
     const items = await db.item.findMany({
       where: { ownerId: userId },
-      select: ownItemWithAuctions,
+      select: ownItemSelect,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -105,7 +69,7 @@ class Item {
   }
 
   static async readOwnById(id: string, userId: string) {
-    const item = await db.item.findUnique({ where: { id }, select: ownItemWithAuctions });
+    const item = await db.item.findUnique({ where: { id }, select: ownItemSelect });
 
     if (!item) throw new NotFound('Item not found');
     if (item.ownerId !== userId) throw new Forbidden('This item belongs to another user');
@@ -121,7 +85,7 @@ class Item {
     try {
       const item = await db.item.create({
         data: { ...data, id, ownerId: userId, images },
-        select: ownItemWithAuctions,
+        select: ownItemSelect,
       });
 
       return serializeOwnItem(item);
@@ -158,7 +122,7 @@ class Item {
         return tx.item.update({
           where: { id },
           data: { ...data, ...(newImages && { images: newImages }) },
-          select: ownItemWithAuctions,
+          select: ownItemSelect,
         });
       });
 

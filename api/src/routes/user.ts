@@ -1,36 +1,43 @@
 import { Router } from 'express';
+import { env } from '../config/env.js';
 import Controller from '../controllers/User.js';
-import auth from '../middlewares/auth.js';
-import validate from '../middlewares/validate.js';
-import { createUserSchema, userIdSchema, updateUserSchema } from '../schemas/User.js';
+import Auth from '../middlewares/Auth.js';
+import RateLimit from '../middlewares/RateLimit.js';
+import Validate from '../middlewares/Validate.js';
+import { createUserSchema, updateUserSchema, userIdSchema } from '../schemas/User.js';
 
 const router = Router();
 
 router
   .get(
     '/user',
-    auth('logged'),
-    Controller.readSelf
+    Auth.require('logged'),
+    Controller.readSelf // Dados da própria conta (com e-mail)
   )
   .get(
     '/user/:id',
-    validate(userIdSchema, 'params'),
-    Controller.readById
+    Validate.params(userIdSchema),
+    Controller.readById // Perfil público (sem e-mail)
   )
   .post(
     '/user',
-    validate(createUserSchema),
+    RateLimit.byIp({
+      scope: 'signup',
+      max: env.AUTH_RATE_LIMIT_MAX,
+      windowSeconds: env.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    }),
+    Validate.body(createUserSchema),
     Controller.create
   )
   .put(
     '/user',
-    auth('logged'),
-    validate(updateUserSchema),
-    Controller.update,
+    Auth.require('logged'),
+    Validate.body(updateUserSchema),
+    Controller.update
   )
   .delete(
     '/user',
-    auth('logged'),
+    Auth.require('logged'),
     Controller.delete
   );
 

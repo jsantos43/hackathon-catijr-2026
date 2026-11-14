@@ -31,9 +31,3 @@ export const DURATIONS: { label: string; seconds: number }[] = [
 ];
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
-
-/**
- * Rotas/eventos que a API ainda não tem usam uma resposta genérica (ver services/pending.ts).
- * Defina VITE_PENDING_FALLBACK=false para desligar e ver os erros reais.
- */
-export const PENDING_FALLBACK = import.meta.env.VITE_PENDING_FALLBACK !== 'false';

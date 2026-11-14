@@ -1,124 +1,57 @@
 import type { Server as HttpServer } from 'node:http';
-import { parseCookie } from 'cookie';
+import { createAdapter } from '@socket.io/redis-adapter';
 import { Server } from 'socket.io';
-import { z } from 'zod';
 import { env } from '../config/env.js';
-import { db } from '../prisma/db.js';
-import AuctionRoom from '../services/AuctionRoom.js';
-import Auth from '../services/Auth.js';
-import {
-  auctionRoom,
-  emitAuctionState,
-  setIo,
-  type SocketData,
-} from './events.js';
+import { createRedisConnection } from '../redis/client.js';
+import type {
+  ClientToServerEvents,
+  InterServerEvents,
+  ServerToClientEvents,
+  SocketData,
+} from './contract.js';
+import BidHandler from './handlers/BidHandler.js';
+import RoomHandler from './handlers/RoomHandler.js';
+import SocketAuth from './middlewares/SocketAuth.js';
+import RoomEmitter from './RoomEmitter.js';
+import type { IoServer } from './types.js';
 
-const joinSchema = z.object({ auctionId: z.uuid() });
-
-const bidSchema = z.object({
-  auctionId: z.uuid(),
-  amountCents: z.number().int().positive(),
-  requestId: z.uuid(),
-});
-
-const roomIdFromName = (name: string) =>
-  name.startsWith('auction:') ? name.slice('auction:'.length) : null;
-
-export function setupSocket(server: HttpServer) {
-  const io = new Server<any, any, any, SocketData>(server, {
+/**
+ * Monta o servidor Socket.IO em cima do servidor HTTP da API.
+ *
+ *  1. CORS com credenciais (o navegador manda o cookie de sessão no handshake).
+ *  2. Adapter do Redis: com mais de uma instância da API, um emit numa sala chega a quem
+ *     está conectado em qualquer instância.
+ *  3. SocketAuth: só entra quem tem sessão válida.
+ *  4. Handlers de sala e de lance.
+ */
+export const createSocketServer = (httpServer: HttpServer) => {
+  const io: IoServer = new Server<
+    ClientToServerEvents,
+    ServerToClientEvents,
+    InterServerEvents,
+    SocketData
+  >(httpServer, {
     cors: { origin: env.CORS_ORIGIN.split(','), credentials: true },
   });
 
-  setIo(io);
+  const pub = createRedisConnection();
+  const sub = createRedisConnection();
+  io.adapter(createAdapter(pub, sub));
 
-  io.use(async (socket, next) => {
-    try {
-      const cookies = parseCookie(socket.handshake.headers.cookie ?? '');
-      const { user } = await Auth.authenticate(cookies['accessToken']);
-      socket.data.user = user;
-      next();
-    } catch {
-      next(new Error('UNAUTHORIZED'));
-    }
-  });
+  io.use((socket, next) => void SocketAuth.handshake(socket, next));
 
   io.on('connection', (socket) => {
-    socket.on('auction:join', async (payload: unknown, ack?: (res: unknown) => void) => {
-      const parsed = joinSchema.safeParse(payload);
-      if (!parsed.success) return ack?.({ ok: false, error: 'INVALID_PAYLOAD' });
-
-      const auction = await db.auction.findUnique({
-        where: { id: parsed.data.auctionId },
-        select: { status: true },
-      });
-      if (!auction) return ack?.({ ok: false, error: 'NOT_FOUND' });
-
-      await socket.join(auctionRoom(parsed.data.auctionId));
-
-      const room = AuctionRoom.get(parsed.data.auctionId);
-      if (!room) {
-        return ack?.({
-          ok: true,
-          snapshot: null,
-          status: auction.status,
-          serverTime: new Date().toISOString(),
-        });
-      }
-
-      room.addConnection(socket.data.user.id, socket.id);
-      ack?.({
-        ok: true,
-        snapshot: await room.snapshot(),
-        serverTime: new Date().toISOString(),
-      });
-    });
-
-    socket.on('auction:leave', async (payload: unknown) => {
-      const parsed = joinSchema.safeParse(payload);
-      if (!parsed.success) return;
-
-      const room = AuctionRoom.get(parsed.data.auctionId);
-      room?.removeConnection(socket.data.user.id, socket.id);
-      await socket.leave(auctionRoom(parsed.data.auctionId));
-    });
-
-    socket.on('bid:place', async (payload: unknown, ack?: (res: unknown) => void) => {
-      const parsed = bidSchema.safeParse(payload);
-      if (!parsed.success) return ack?.({ ok: false, code: 'INVALID_PAYLOAD' });
-
-      const { auctionId, amountCents, requestId } = parsed.data;
-      if (!socket.rooms.has(auctionRoom(auctionId))) {
-        return ack?.({ ok: false, code: 'NOT_IN_ROOM' });
-      }
-
-      const room = AuctionRoom.get(auctionId);
-      if (!room) return ack?.({ ok: false, code: 'NOT_RUNNING' });
-
-      try {
-        const result = await room.placeBid({
-          userId: socket.data.user.id,
-          amountCents,
-          requestId,
-        });
-
-        if (!result.ok) return ack?.(result);
-
-        emitAuctionState(await room.snapshot());
-        ack?.(result);
-      } catch (err) {
-        console.error(`Erro ao processar lance no leilão ${auctionId}`, err);
-        ack?.({ ok: false, code: 'INTERNAL' });
-      }
-    });
-
-    socket.on('disconnect', () => {
-      for (const name of socket.rooms) {
-        const auctionId = roomIdFromName(name);
-        if (!auctionId) continue;
-        AuctionRoom.get(auctionId)?.removeConnection(socket.data.user.id, socket.id);
-      }
-    });
+    RoomHandler.register(socket);
+    BidHandler.register(socket);
   });
 
-  return io;
-}
+  RoomEmitter.attach(io);
+
+  const close = async () => {
+    RoomEmitter.detach();
+    await io.close();
+    await Promise.allSettled([pub.quit(), sub.quit()]);
+  };
+
+  return { io, close };
+};
