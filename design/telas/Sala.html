@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Sala do leilão ao vivo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3B3FD8}a:hover{color:#2F32B5}
+</style>
+</helmet>
+<div style="min-height: 1280px; background: #F6F5F1; font-family: Inter, system-ui, sans-serif; color: #15161C">
+  <header style="background: #FFFFFF; border-bottom: 1px solid #E4E2DB">
+    <div style="max-width: 1240px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px">
+      <a href="Listagem.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #15161C">
+        <span style="width: 36px; height: 36px; border-radius: 10px; background: #3B3FD8; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 13-7.5 7.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 6-6"></path><path d="m8 8 6-6"></path><path d="m9 7 8 8"></path><path d="m21 11-8-8"></path></svg></span>
+        <span style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700">Arremate</span>
+      </a>
+      <a href="Listagem.dc.html" style="font-size: 14px; font-weight: 600; text-decoration: none; flex: 1">← Voltar aos leilões</a>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: {{connFg}}"><span style="width: 8px; height: 8px; border-radius: 4px; background: {{connDot}}"></span>{{connText}}</span>
+      <span aria-label="Sua conta: João S." style="width: 40px; height: 40px; border-radius: 20px; background: #ECECFC; color: #2F32B5; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px">JS</span>
+    </div>
+  </header>
+
+  <sc-if value="{{reconnecting}}" hint-placeholder-val="{{ false }}">
+    <div role="status" style="background: #FFF4D6; border-bottom: 1px solid #F1D48A; color: #6B4600">
+      <div style="max-width: 1240px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 12px; font-size: 14px">
+        <span style="width: 16px; height: 16px; border-radius: 8px; border: 2px solid #8A5A00; border-right-color: transparent; flex-shrink: 0"></span>
+        <span><b>Conexão perdida. Reconectando…</b> Seu lugar na sala está guardado; ao voltar, você vê o estado atualizado (RF24).</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <main style="max-width: 1240px; margin: 0 auto; padding: 24px 24px 64px; display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start">
+    <section style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+      <div style="height: 420px; border-radius: 20px; background: #E9E6DE; position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: #4A4D5A">
+        <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>
+        <span style="font-size: 14px">Foto 1 de 5</span>
+        <span style="position: absolute; top: 16px; left: 16px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: {{stateBg}}; color: {{stateFg}}; font-size: 13px; font-weight: 700">{{stateLabel}}</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px">
+        <button type="button" aria-label="Foto 1" style="height: 72px; border-radius: 10px; border: 2px solid #3B3FD8; background: #E9E6DE"></button>
+        <button type="button" aria-label="Foto 2" style="height: 72px; border-radius: 10px; border: 1px solid #E4E2DB; background: #E4E0D7"></button>
+        <button type="button" aria-label="Foto 3" style="height: 72px; border-radius: 10px; border: 1px solid #E4E2DB; background: #ECE9E2"></button>
+        <button type="button" aria-label="Foto 4" style="height: 72px; border-radius: 10px; border: 1px solid #E4E2DB; background: #E6E2DA"></button>
+        <button type="button" aria-label="Foto 5" style="height: 72px; border-radius: 10px; border: 1px solid #E4E2DB; background: #E9E6DE"></button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4A4D5A">Fotografia</span>
+        <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 32px; line-height: 40px; font-weight: 700">Câmera Canon AE-1 Program</h1>
+        <span style="font-size: 14px; color: #4A4D5A">Anunciado por <a href="Perfil.dc.html" style="font-weight: 600">Rafael Almeida</a> · preço inicial R$ 900,00</span>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 20px; padding: 20px 24px; display: flex; flex-direction: column; gap: 4px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 8px">
+          <h2 style="margin: 0; font-size: 20px; font-weight: 600">Últimos lances</h2>
+          <span style="font-size: 13px; color: #4A4D5A">{{totalText}}</span>
+        </div>
+        <sc-for list="{{recent}}" as="b" hint-placeholder-count="6">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid #EEEDE8">
+            <span style="width: 36px; height: 36px; border-radius: 18px; background: {{b.avBg}}; color: {{b.avFg}}; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0">{{b.ini}}</span>
+            <div style="display: flex; flex-direction: column; gap: 1px; flex: 1">
+              <span style="font-weight: {{b.weight}}; font-size: 15px">{{b.who}}</span>
+              <span style="font-size: 12px; color: #4A4D5A; font-variant-numeric: tabular-nums">{{b.t}}</span>
+            </div>
+            <sc-if value="{{b.top}}" hint-placeholder-val="{{ false }}">
+              <span style="padding: 3px 8px; border-radius: 6px; background: #E3F4EC; color: #0B5E40; font-size: 12px; font-weight: 700">Maior lance</span>
+            </sc-if>
+            <span style="font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums">{{b.amt}}</span>
+          </div>
+        </sc-for>
+        <sc-if value="{{noBids}}" hint-placeholder-val="{{ false }}">
+          <span style="padding: 16px 0; font-size: 14px; color: #4A4D5A">Nenhum lance foi dado neste leilão.</span>
+        </sc-if>
+      </div>
+    </section>
+
+    <aside aria-label="Painel do leilão" style="flex: 1 1 400px; display: flex; flex-direction: column; gap: 14px">
+      <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+        <div role="alert" style="display: flex; gap: 12px; padding: 14px 16px; border-radius: 14px; background: {{toastBg}}; color: {{toastFg}}; align-items: flex-start; border: 1px solid {{toastBd}}">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px; flex: 1"><span style="font-weight: 700; font-size: 15px">{{toastTitle}}</span><span style="font-size: 13px">{{toastText}}</span></div>
+          <button type="button" aria-label="Fechar aviso" onClick="{{closeToast}}" style="border: 0; background: transparent; color: inherit; font: 700 18px Inter, sans-serif; width: 28px; height: 28px; cursor: pointer">×</button>
+        </div>
+      </sc-if>
+
+      <div style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 20px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap">
+          <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: {{stateBg}}; color: {{stateFg}}; font-size: 13px; font-weight: 700">{{stateLabel}}</span>
+          <span style="display: inline-flex; gap: 14px; font-size: 13px; color: #4A4D5A">
+            <span style="display: inline-flex; align-items: center; gap: 5px"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 13-7.5 7.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 6-6"></path><path d="m8 8 6-6"></path><path d="m9 7 8 8"></path><path d="m21 11-8-8"></path></svg>{{partText}}</span>
+            <span style="display: inline-flex; align-items: center; gap: 5px"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>{{specText}}</span>
+          </span>
+        </div>
+
+        <sc-if value="{{running}}" hint-placeholder-val="{{ true }}">
+          <div style="border-radius: 14px; padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; background: {{clockBg}}; border: 1px solid {{clockBd}}">
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: {{clockFg}}">{{clockLabel}}</span><span style="font-size: 13px; color: {{clockFg}}">{{endsAt}}</span></div>
+            <span style="font-family: 'Space Grotesk', sans-serif; font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; color: {{clockNum}}">{{clock}}</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{extended}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #FFF4D6; color: #6B4600; font-size: 13px; line-height: 18px; align-items: flex-start">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink: 0"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span><b>Prorrogado.</b> {{extText}}</span>
+          </div>
+        </sc-if>
+
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4A4D5A">{{priceLabel}}</span>
+          <span style="font-family: 'Space Grotesk', sans-serif; font-size: 52px; line-height: 56px; font-weight: 700; letter-spacing: -1px; font-variant-numeric: tabular-nums">{{price}}</span>
+        </div>
+        <dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px 0; border-top: 1px solid #EEEDE8; border-bottom: 1px solid #EEEDE8">
+          <div style="display: flex; flex-direction: column; gap: 4px"><dt style="font-size: 12px; color: #4A4D5A">Lance mínimo</dt><dd style="margin: 0; font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums">{{minText}}</dd></div>
+          <div style="display: flex; flex-direction: column; gap: 4px"><dt style="font-size: 12px; color: #4A4D5A">Líder</dt><dd style="margin: 0; font-weight: 700; font-size: 16px; color: {{leaderFg}}">{{leader}}</dd></div>
+          <div style="display: flex; flex-direction: column; gap: 4px"><dt style="font-size: 12px; color: #4A4D5A">Lances</dt><dd style="margin: 0; font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums">{{total}}</dd></div>
+        </dl>
+
+        <sc-if value="{{hasMsg}}" hint-placeholder-val="{{ false }}">
+          <div role="alert" style="display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #FDECEA; border: 1px solid #F3C4BF; color: #8F1C13; align-items: flex-start">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700; font-size: 14px">Lance recusado</span><span style="font-size: 13px; line-height: 18px">{{msg}}</span></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{showBidForm}}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 12px">
+            <label for="sala-valor" style="font-size: 14px; font-weight: 600">Seu lance</label>
+            <div style="display: flex; align-items: center; height: 56px; border: 2px solid {{inputBd}}; border-radius: 12px; padding: 0 16px; gap: 8px; background: #FFFFFF">
+              <span style="font-weight: 600; color: #4A4D5A">R$</span>
+              <input id="sala-valor" type="text" inputmode="decimal" value="{{amount}}" onChange="{{onAmount}}" style="border: 0; outline: 0; flex: 1; min-width: 0; font: 700 22px 'Space Grotesk', sans-serif; font-variant-numeric: tabular-nums; color: #15161C; background: transparent">
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+              <sc-for list="{{quick}}" as="qk" hint-placeholder-count="3">
+                <button type="button" onClick="{{qk.pick}}" style="height: 44px; border: 1px solid #CFCCC2; border-radius: 10px; background: #FFFFFF; color: #15161C; font: 600 14px Inter, sans-serif; font-variant-numeric: tabular-nums">{{qk.label}}</button>
+              </sc-for>
+            </div>
+            <button type="button" onClick="{{onBid}}" disabled="{{bidDisabled}}" style="height: 60px; border: 0; border-radius: 14px; background: {{btnBg}}; color: {{btnFg}}; font: 700 17px Inter, sans-serif; font-variant-numeric: tabular-nums; cursor: pointer">{{btnText}}</button>
+            <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: #4A4D5A">
+              <span>O lance é irrevogável.</span>
+              <button type="button" onClick="{{toSpectator}}" style="border: 0; background: transparent; padding: 0; color: #3B3FD8; font: 600 13px Inter, sans-serif; cursor: pointer">Só assistir</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{showSpectator}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 14px; background: #F6F5F1">
+            <span style="font-weight: 600; font-size: 15px">Você está assistindo</span>
+            <span style="font-size: 14px; line-height: 20px; color: #4A4D5A">Acompanhe a disputa sem dar lances. Para participar, não precisa sair da sala.</span>
+            <button type="button" onClick="{{toParticipant}}" style="height: 48px; border: 0; border-radius: 12px; background: #3B3FD8; color: #FFFFFF; font: 700 15px Inter, sans-serif; cursor: pointer">Participar da disputa</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{showComitente}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; gap: 12px; padding: 16px; border-radius: 14px; background: #FFF4D6; color: #6B4600; align-items: flex-start">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink: 0"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <span style="font-size: 14px; line-height: 20px"><b>Este leilão é seu.</b> Você acompanha como espectador; comitentes não dão lances no próprio leilão (RF04).</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{showResult}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 20px; border-radius: 16px; background: {{resBg}}; color: {{resFg}}; text-align: center; align-items: center">
+            <span style="font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase">Resultado</span>
+            <span style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; line-height: 34px; font-weight: 700">{{resTitle}}</span>
+            <span style="font-size: 14px; line-height: 20px">{{resText}}</span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display: flex; gap: 10px; padding: 0 4px; font-size: 13px; line-height: 19px; color: #4A4D5A">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0; margin-top: 2px"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        <span>O horário que vale é o do servidor. Lances com menos de 2 min no relógio levam o término para 2 min depois, até 30 min a mais.</span>
+      </div>
+    </aside>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"estado":{"editor":"enum","options":["andamento","vendido","encerrado"],"default":"andamento","section":"Cenário"},"papel":{"editor":"enum","options":["participante","espectador","comitente"],"default":"participante","section":"Cenário"},"cenario":{"editor":"enum","options":["normal","lider","superado","recusado","ultimos-minutos","reconectando"],"default":"normal","section":"Cenário"},"$preview":{"width":1440,"height":1280}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = this.initial(p); }
+  initial(p) {
+    const cen = p.cenario ?? 'normal';
+    const bids = [
+      { who: 'Marina T.', amt: 124000, t: '18:29:41' },
+      { who: 'Você', amt: 119000, t: '18:29:12' },
+      { who: 'Diego R.', amt: 114000, t: '18:28:55' },
+      { who: 'Carla M.', amt: 109000, t: '18:27:30' },
+      { who: 'Diego R.', amt: 104000, t: '18:26:02' },
+      { who: 'Você', amt: 99000, t: '18:24:47' }
+    ];
+    if (cen === 'lider') bids.unshift({ who: 'Você', amt: 129000, t: '18:30:02' });
+    const s = {
+      papel: p.papel ?? 'participante', bids, total: cen === 'lider' ? 19 : 18,
+      secs: cen === 'ultimos-minutos' ? 95 : 765, ext: cen === 'ultimos-minutos' ? 6 : 0,
+      msg: null, toast: null, sending: false, ended: false
+    };
+    if (cen === 'superado') s.toast = { kind: 'out', title: 'Seu lance foi superado', text: 'Marina T. ofereceu R$ 1.240,00. Mínimo agora: R$ 1.290,00.' };
+    if (cen === 'recusado') s.msg = 'Outro lance chegou antes do seu. O lance mínimo agora é R$ 1.290,00.';
+    s.amount = this.fmtNum(this.minOf(bids[0].amt));
+    if (cen === 'recusado') s.amount = '1.240,00';
+    return s;
+  }
+  componentDidUpdate(prev) {
+    if (prev.cenario !== this.props.cenario || prev.papel !== this.props.papel || prev.estado !== this.props.estado) this.setState(this.initial(this.props));
+  }
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      if ((this.props.estado ?? 'andamento') !== 'andamento' || this.state.ended) return;
+      const secs = this.state.secs - 1;
+      this.setState(secs <= 0 ? { secs: 0, ended: true } : { secs });
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.t1); clearTimeout(this.t2); }
+  inc(c) { return c < 10000 ? 100 : c < 50000 ? 500 : c < 100000 ? 1000 : c < 500000 ? 5000 : c < 2500000 ? 10000 : 50000; }
+  minOf(price) { return price + this.inc(price); }
+  fmtNum(c) { return (c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  fmt(c) { return 'R$ ' + this.fmtNum(c); }
+  parse(s) { const v = parseFloat(String(s).replace(/\./g, '').replace(',', '.')); return isNaN(v) ? NaN : Math.round(v * 100); }
+  now() { const d = new Date(); return d.toLocaleTimeString('pt-BR'); }
+  bid() {
+    const st = this.state;
+    const price = st.bids[0].amt, min = this.minOf(price);
+    if (st.bids[0].who === 'Você') return this.setState({ msg: 'Você já é o líder deste leilão.' });
+    const v = this.parse(st.amount);
+    if (isNaN(v) || v < min) return this.setState({ msg: 'Valor abaixo do lance mínimo atual. O mínimo agora é ' + this.fmt(min) + '.' });
+    this.setState({ sending: true, msg: null, toast: null });
+    this.t1 = setTimeout(() => {
+      const s = this.state;
+      let secs = s.secs, ext = s.ext, extended = false;
+      if (secs < 120 && ext < 30) { ext = Math.min(30, ext + 2); secs = 120; extended = true; }
+      this.setState({
+        sending: false, bids: [{ who: 'Você', amt: v, t: this.now() }].concat(s.bids), total: s.total + 1,
+        secs, ext, amount: this.fmtNum(this.minOf(v)),
+        toast: { kind: 'ok', title: 'Lance aceito: ' + this.fmt(v), text: extended ? 'Você é o líder. O término foi prorrogado.' : 'Você é o líder agora.' }
+      });
+      this.t2 = setTimeout(() => {
+        const s2 = this.state;
+        if (s2.ended || s2.bids[0].who !== 'Você') return;
+        const nv = this.minOf(s2.bids[0].amt);
+        this.setState({
+          bids: [{ who: 'Diego R.', amt: nv, t: this.now() }].concat(s2.bids), total: s2.total + 1, amount: this.fmtNum(this.minOf(nv)),
+          toast: { kind: 'out', title: 'Seu lance foi superado', text: 'Diego R. ofereceu ' + this.fmt(nv) + '. Mínimo agora: ' + this.fmt(this.minOf(nv)) + '.' }
+        });
+      }, 4000);
+    }, 700);
+  }
+  renderVals() {
+    const st = this.state;
+    const cen = this.props.cenario ?? 'normal';
+    let estado = this.props.estado ?? 'andamento';
+    if (st.ended && estado === 'andamento') estado = 'vendido';
+    const papel = st.papel;
+    const noBidsMode = estado === 'encerrado';
+    const bids = noBidsMode ? [] : st.bids;
+    const price = noBidsMode ? 90000 : bids[0].amt;
+    const min = noBidsMode ? 90000 : this.minOf(price);
+    const leaderName = noBidsMode ? '—' : bids[0].who;
+    const youLead = leaderName === 'Você';
+    const running = estado === 'andamento';
+    const urgent = running && st.secs < 120;
+    const mm = String(Math.floor(st.secs / 60)).padStart(2, '0'), ss = String(st.secs % 60).padStart(2, '0');
+    const end = new Date(Date.now() + st.secs * 1000);
+    const palette = { 'Você': ['#3B3FD8', '#FFFFFF'], 'Marina T.': ['#ECECFC', '#2F32B5'], 'Diego R.': ['#E3F4EC', '#0B5E40'], 'Carla M.': ['#FDECE3', '#9A3412'] };
+    const recent = bids.slice(0, 7).map((b, i) => ({
+      who: b.who, t: b.t, amt: this.fmt(b.amt), top: i === 0,
+      ini: b.who === 'Você' ? 'Eu' : b.who.split(' ').map((x) => x[0]).join('').replace('.', ''),
+      avBg: (palette[b.who] || ['#EEEDE8'])[0], avFg: (palette[b.who] || ['', '#4A4D5A'])[1],
+      weight: b.who === 'Você' ? '700' : '500'
+    }));
+    const offline = cen === 'reconectando';
+    const isPart = papel === 'participante';
+    const stateMap = { andamento: ['Ao vivo', '#C2410C', '#FFFFFF'], vendido: ['Vendido', '#E3F4EC', '#0B5E40'], encerrado: ['Encerrado sem lances', '#EEEDE8', '#4A4D5A'] };
+    const [stateLabel, stateBg, stateFg] = stateMap[estado];
+    const toast = st.toast;
+    const quick = [0, 1, 4].map((k) => {
+      const v = min + k * this.inc(price);
+      return { label: k === 0 ? 'Mínimo' : '+' + this.fmt(k * this.inc(price)).replace('R$ ', 'R$ '), pick: () => this.setState({ amount: this.fmtNum(v), msg: null }) };
+    });
+    let btnText = 'Dar lance · R$ ' + st.amount;
+    if (st.sending) btnText = 'Enviando lance…';
+    if (youLead) btnText = 'Você é o líder';
+    if (offline) btnText = 'Aguardando conexão…';
+    const bidDisabled = st.sending || youLead || offline;
+    let resTitle = '', resText = '', resBg = '#E3F4EC', resFg = '#0B5E40';
+    if (estado === 'vendido') {
+      if (youLead && isPart) { resTitle = 'Você venceu!'; resText = 'Arrematado por ' + this.fmt(price) + '. A compra já conta no seu histórico.'; resBg = '#0F7B53'; resFg = '#FFFFFF'; }
+      else { resTitle = 'Vendido para ' + leaderName; resText = 'Valor final: ' + this.fmt(price) + ' · ' + st.total + ' lances.'; }
+    } else if (estado === 'encerrado') {
+      resTitle = 'Encerrado sem lances'; resText = 'Ninguém deu lance até o fim. O comitente pode relistar o item.'; resBg = '#EEEDE8'; resFg = '#2A2C35';
+    }
+    return {
+      reconnecting: offline,
+      connText: offline ? 'Reconectando…' : 'Conectado · tempo real', connDot: offline ? '#D99A0B' : '#0F7B53', connFg: offline ? '#6B4600' : '#0B5E40',
+      stateLabel, stateBg, stateFg,
+      partText: (isPart ? 12 : 11) + ' participantes', specText: (isPart ? 31 : 32) + ' espectadores',
+      running, clock: mm + ':' + ss,
+      clockLabel: urgent ? 'Últimos minutos' : 'Termina em',
+      endsAt: urgent ? 'Lances agora prorrogam o término' : 'às ' + end.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' (seu horário)',
+      clockBg: urgent ? '#FDECE3' : '#F6F5F1', clockBd: urgent ? '#F5C4AA' : '#E4E2DB', clockFg: urgent ? '#9A3412' : '#4A4D5A', clockNum: urgent ? '#9A3412' : '#15161C',
+      extended: running && st.ext > 0, extText: 'Lance nos minutos finais. Prorrogação acumulada: ' + st.ext + ' de 30 min.',
+      priceLabel: estado === 'andamento' ? 'Preço atual' : (estado === 'vendido' ? 'Valor final' : 'Preço inicial'),
+      price: this.fmt(price), minText: running ? this.fmt(min) : '—', leader: leaderName, leaderFg: youLead ? '#0F7B53' : '#15161C', total: noBidsMode ? 0 : st.total,
+      totalText: noBidsMode ? '0 lances' : st.total + ' lances no total',
+      recent, noBids: bids.length === 0,
+      hasMsg: running && isPart && !!st.msg, msg: st.msg || '',
+      hasToast: running && !!toast, toastTitle: toast ? toast.title : '', toastText: toast ? toast.text : '',
+      toastBg: toast && toast.kind === 'ok' ? '#E3F4EC' : '#C2410C', toastFg: toast && toast.kind === 'ok' ? '#0B5E40' : '#FFFFFF', toastBd: toast && toast.kind === 'ok' ? '#9FD6BE' : '#C2410C',
+      closeToast: () => this.setState({ toast: null }),
+      showBidForm: running && isPart, showSpectator: running && papel === 'espectador', showComitente: running && papel === 'comitente', showResult: !running,
+      resTitle, resText, resBg, resFg,
+      amount: st.amount, onAmount: (e) => this.setState({ amount: e.target.value, msg: null }),
+      inputBd: st.msg ? '#B42318' : '#3B3FD8', quick,
+      onBid: () => this.bid(), bidDisabled, btnText,
+      btnBg: bidDisabled ? '#E4E2DB' : '#3B3FD8', btnFg: bidDisabled ? '#4A4D5A' : '#FFFFFF',
+      toSpectator: () => this.setState({ papel: 'espectador', msg: null }),
+      toParticipant: () => this.setState({ papel: 'participante' })
+    };
+  }
+}
+</script>
+</body>
+</html>

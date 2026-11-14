@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Perfil público do comitente</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3B3FD8}a:hover{color:#2F32B5}
+</style>
+</helmet>
+<div style="min-height: 1080px; background: #F6F5F1; font-family: Inter, system-ui, sans-serif; color: #15161C">
+  <header style="background: #FFFFFF; border-bottom: 1px solid #E4E2DB">
+    <div style="max-width: 1240px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px">
+      <a href="Listagem.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #15161C">
+        <span style="width: 36px; height: 36px; border-radius: 10px; background: #3B3FD8; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 13-7.5 7.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 6-6"></path><path d="m8 8 6-6"></path><path d="m9 7 8 8"></path><path d="m21 11-8-8"></path></svg></span>
+        <span style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700">Arremate</span>
+      </a>
+      <div style="flex: 1 1 280px; max-width: 420px; display: flex; align-items: center; gap: 10px; height: 42px; border: 1px solid #CFCCC2; border-radius: 10px; padding: 0 12px">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4D5A" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <label for="pf-busca" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Buscar comitentes</label>
+        <input id="pf-busca" type="search" placeholder="Buscar comitente pelo nome" style="border: 0; outline: 0; flex: 1; min-width: 0; font: 400 14px Inter, sans-serif; background: transparent; color: #15161C">
+      </div>
+      <nav aria-label="Principal" style="display: flex; gap: 24px; flex-wrap: wrap; flex: 1; justify-content: flex-end">
+        <a href="Listagem.dc.html" style="color: #4A4D5A; font-weight: 500; font-size: 15px; text-decoration: none">Leilões</a>
+        <a href="Participacoes.dc.html" style="color: #4A4D5A; font-weight: 500; font-size: 15px; text-decoration: none">Minhas participações</a>
+      </nav>
+      <span aria-label="Sua conta: João S." style="width: 40px; height: 40px; border-radius: 20px; background: #ECECFC; color: #2F32B5; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px">JS</span>
+    </div>
+  </header>
+
+  <main style="max-width: 1240px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-direction: column; gap: 28px">
+    <section style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 24px; padding: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 24px">
+      <span style="width: 88px; height: 88px; border-radius: 44px; background: #FFF4D6; color: #6B4600; display: inline-flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 32px">RA</span>
+      <div style="flex: 1 1 300px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6B4600">Comitente</span>
+        <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 36px; line-height: 42px; font-weight: 700">Rafael Almeida</h1>
+        <span style="font-size: 15px; color: #4A4D5A">No Arremate desde março de 2026</span>
+      </div>
+      <dl style="margin: 0; display: flex; gap: 32px; flex-wrap: wrap">
+        <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 13px; color: #4A4D5A">Em andamento</dt><dd style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700">2</dd></div>
+        <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 13px; color: #4A4D5A">Agendados</dt><dd style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700">2</dd></div>
+        <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 13px; color: #4A4D5A">Passados</dt><dd style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700">3</dd></div>
+      </dl>
+    </section>
+
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+      <section style="display: flex; flex-direction: column; gap: 14px">
+        <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700">{{g.title}}</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px">
+          <sc-for list="{{g.items}}" as="a" hint-placeholder-count="3">
+            <a href="{{a.href}}" style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 16px; overflow: hidden; display: flex; text-decoration: none; color: #15161C">
+              <span style="width: 96px; flex-shrink: 0; background: {{a.ph}}"></span>
+              <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0">
+                <span style="align-self: flex-start; padding: 3px 8px; border-radius: 999px; background: {{a.bg}}; color: {{a.fg}}; border: 1px {{a.bdr}}; font-size: 11px; font-weight: 700">{{a.state}}</span>
+                <span style="font-weight: 600; font-size: 15px; line-height: 20px">{{a.name}}</span>
+                <span style="font-size: 13px; color: #4A4D5A; font-variant-numeric: tabular-nums">{{a.info}}</span>
+              </div>
+            </a>
+          </sc-for>
+        </div>
+      </section>
+    </sc-for>
+    <span style="font-size: 13px; color: #4A4D5A">Perfis não têm avaliações nem reputação: só mostram quem anuncia e o que anunciou.</span>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const T = {
+      live: ['Ao vivo', '#C2410C', '#FFFFFF', 'solid #C2410C', 'Sala.dc.html'],
+      sched: ['Agendado', '#E8EEF8', '#2B4C7E', 'solid #E8EEF8', 'Detalhe.dc.html'],
+      sold: ['Vendido', '#E3F4EC', '#0B5E40', 'solid #E3F4EC', 'Detalhe.dc.html'],
+      none: ['Encerrado sem lances', '#EEEDE8', '#4A4D5A', 'solid #EEEDE8', 'Detalhe.dc.html'],
+      canc: ['Cancelado', '#FFFFFF', '#4A4D5A', 'dashed #A5A7B0', 'Detalhe.dc.html']
+    };
+    const mk = (list) => list.map(([st, name, info, ph]) => ({ name, info, ph, state: T[st][0], bg: T[st][1], fg: T[st][2], bdr: T[st][3], href: T[st][4] }));
+    return {
+      groups: [
+        { title: 'Em andamento', items: mk([
+          ['live', 'Câmera Canon AE-1 Program', 'R$ 1.240,00 · termina 18:42', '#E9E6DE'],
+          ['live', 'Vitrola Philips anos 70', 'R$ 600,00 · termina 18:56', '#E6E8EE']
+        ]) },
+        { title: 'Agendados', items: mk([
+          ['sched', 'Guitarra Fender Stratocaster', 'R$ 3.500,00 · abre hoje 20:00', '#ECE6E1'],
+          ['sched', 'Bicicleta Caloi 10 restaurada', 'R$ 1.100,00 · abre amanhã 10:00', '#E6E8EE']
+        ]) },
+        { title: 'Passados', items: mk([
+          ['sold', 'Relógio Casio vintage', 'Vendido por R$ 380,00', '#E4ECE7'],
+          ['none', 'Fone Sony MDR-7506', 'Preço inicial R$ 450,00', '#EAE4EC'],
+          ['canc', 'Tênis de corrida nº 42', 'Cancelado em 09/11', '#EDEAE0']
+        ]) }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

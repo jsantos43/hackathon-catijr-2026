@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Minhas participações</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3B3FD8}a:hover{color:#2F32B5}
+</style>
+</helmet>
+<div style="min-height: 1000px; background: #F6F5F1; font-family: Inter, system-ui, sans-serif; color: #15161C">
+  <header style="background: #FFFFFF; border-bottom: 1px solid #E4E2DB">
+    <div style="max-width: 1240px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px">
+      <a href="Listagem.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #15161C">
+        <span style="width: 36px; height: 36px; border-radius: 10px; background: #3B3FD8; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 13-7.5 7.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 6-6"></path><path d="m8 8 6-6"></path><path d="m9 7 8 8"></path><path d="m21 11-8-8"></path></svg></span>
+        <span style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700">Arremate</span>
+      </a>
+      <nav aria-label="Principal" style="display: flex; gap: 24px; flex-wrap: wrap; flex: 1">
+        <a href="Listagem.dc.html" style="color: #4A4D5A; font-weight: 500; font-size: 15px; text-decoration: none; padding-bottom: 4px">Leilões</a>
+        <a href="Participacoes.dc.html" style="color: #15161C; font-weight: 600; font-size: 15px; text-decoration: none; border-bottom: 2px solid #3B3FD8; padding-bottom: 4px">Minhas participações</a>
+        <a href="MeusLeiloes.dc.html" style="color: #4A4D5A; font-weight: 500; font-size: 15px; text-decoration: none; padding-bottom: 4px">Meus leilões</a>
+      </nav>
+      <a href="Criar.dc.html" style="height: 40px; padding: 0 16px; border-radius: 10px; background: #3B3FD8; color: #FFFFFF; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; text-decoration: none">Anunciar item</a>
+      <span aria-label="Sua conta: João S." style="width: 40px; height: 40px; border-radius: 20px; background: #ECECFC; color: #2F32B5; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px">JS</span>
+    </div>
+  </header>
+
+  <main style="max-width: 1240px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-direction: column; gap: 24px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 40px; line-height: 46px; font-weight: 700; letter-spacing: -0.5px">Minhas participações</h1>
+      <span style="font-size: 16px; color: #4A4D5A">Leilões em que você deu lances e como você está em cada um.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px">
+      <div style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #4A4D5A">Liderando agora</span><span style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: #0F7B53">1</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #F5C4AA; border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #9A3412">Superado, ainda ao vivo</span><span style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: #9A3412">1</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #4A4D5A">Vencidos</span><span style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700">1</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #4A4D5A">Não vencidos</span><span style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700">1</span></div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+        <div style="background: #FFFFFF; border: 1px solid {{r.bd}}; border-radius: 18px; padding: 16px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px">
+          <span style="width: 72px; height: 72px; border-radius: 12px; background: {{r.ph}}; flex-shrink: 0"></span>
+          <div style="flex: 1 1 240px; display: flex; flex-direction: column; gap: 6px">
+            <span style="font-weight: 600; font-size: 17px">{{r.name}}</span>
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #4A4D5A"><span style="padding: 3px 8px; border-radius: 999px; background: {{r.stBg}}; color: {{r.stFg}}; font-size: 12px; font-weight: 700">{{r.state}}</span>{{r.when}}</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px; width: 150px"><span style="font-size: 12px; color: #4A4D5A">Seu maior lance</span><span style="font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums">{{r.mine}}</span></div>
+          <div style="display: flex; flex-direction: column; gap: 2px; width: 150px"><span style="font-size: 12px; color: #4A4D5A">{{r.priceLabel}}</span><span style="font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums">{{r.price}}</span></div>
+          <span style="padding: 6px 12px; border-radius: 8px; background: {{r.sitBg}}; color: {{r.sitFg}}; font-size: 13px; font-weight: 700; width: 110px; text-align: center; box-sizing: border-box">{{r.sit}}</span>
+          <a href="{{r.href}}" style="height: 44px; padding: 0 16px; border-radius: 10px; background: {{r.ctaBg}}; color: {{r.ctaFg}}; border: 1px solid {{r.ctaBd}}; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap">{{r.cta}}</a>
+        </div>
+      </sc-for>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const SIT = {
+      lider: ['Líder', '#E3F4EC', '#0B5E40'],
+      superado: ['Superado', '#FDECE3', '#9A3412'],
+      vencedor: ['Vencedor', '#0F7B53', '#FFFFFF'],
+      perdeu: ['Não venceu', '#EEEDE8', '#4A4D5A']
+    };
+    const rows = [
+      { name: 'Câmera Canon AE-1 Program', st: 'live', when: 'termina 18:42', mine: 'R$ 1.190,00', price: 'R$ 1.240,00', sit: 'superado', ph: '#E9E6DE', href: 'Sala.dc.html', cta: 'Dar novo lance', strong: true },
+      { name: 'Console Super Nintendo + 2 controles', st: 'live', when: 'termina 19:05', mine: 'R$ 920,00', price: 'R$ 920,00', sit: 'lider', ph: '#EAE4EC', href: 'Sala.dc.html', cta: 'Acompanhar sala' },
+      { name: 'Relógio Casio vintage', st: 'sold', when: 'terminou 12/11, 21:30', mine: 'R$ 380,00', price: 'R$ 380,00', sit: 'vencedor', ph: '#E4ECE7', href: 'Sala.dc.html', cta: 'Ver resultado' },
+      { name: 'Lente Helios 44-2', st: 'sold', when: 'terminou 10/11, 20:15', mine: 'R$ 210,00', price: 'R$ 260,00', sit: 'perdeu', ph: '#E6E8EE', href: 'Sala.dc.html', cta: 'Ver resultado' }
+    ].map((r) => {
+      const live = r.st === 'live';
+      const s = SIT[r.sit];
+      return {
+        ...r,
+        state: live ? 'Ao vivo' : 'Vendido', stBg: live ? '#C2410C' : '#E3F4EC', stFg: live ? '#FFFFFF' : '#0B5E40',
+        priceLabel: live ? 'Preço atual' : 'Valor final',
+        sit: s[0], sitBg: s[1], sitFg: s[2],
+        bd: r.strong ? '#F5C4AA' : '#E4E2DB',
+        ctaBg: r.strong ? '#3B3FD8' : '#FFFFFF', ctaFg: r.strong ? '#FFFFFF' : '#15161C', ctaBd: r.strong ? '#3B3FD8' : '#CFCCC2'
+      };
+    });
+    return { rows };
+  }
+}
+</script>
+</body>
+</html>

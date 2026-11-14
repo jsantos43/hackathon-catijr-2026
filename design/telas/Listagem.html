@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Leilões — listagem pública</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3B3FD8}a:hover{color:#2F32B5}
+</style>
+</helmet>
+<div style="min-height: 1760px; background: #F6F5F1; font-family: Inter, system-ui, sans-serif; color: #15161C">
+  <header style="background: #FFFFFF; border-bottom: 1px solid #E4E2DB">
+    <div style="max-width: 1240px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px">
+      <a href="Listagem.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #15161C">
+        <span style="width: 36px; height: 36px; border-radius: 10px; background: #3B3FD8; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 13-7.5 7.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 6-6"></path><path d="m8 8 6-6"></path><path d="m9 7 8 8"></path><path d="m21 11-8-8"></path></svg></span>
+        <span style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700">Arremate</span>
+      </a>
+      <nav aria-label="Principal" style="display: flex; gap: 24px; flex-wrap: wrap; flex: 1">
+        <a href="Listagem.dc.html" style="color: #15161C; font-weight: 600; font-size: 15px; text-decoration: none; border-bottom: 2px solid #3B3FD8; padding-bottom: 4px">Leilões</a>
+        <a href="Participacoes.dc.html" style="color: #4A4D5A; font-weight: 500; font-size: 15px; text-decoration: none; padding-bottom: 4px">Minhas participações</a>
+        <a href="MeusLeiloes.dc.html" style="color: #4A4D5A; font-weight: 500; font-size: 15px; text-decoration: none; padding-bottom: 4px">Meus leilões</a>
+      </nav>
+      <sc-if value="{{logado}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <a href="Criar.dc.html" style="height: 40px; padding: 0 16px; border-radius: 10px; background: #3B3FD8; color: #FFFFFF; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Anunciar item</a>
+          <span aria-label="Sua conta: João S." style="width: 40px; height: 40px; border-radius: 20px; background: #ECECFC; color: #2F32B5; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px">JS</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{deslogado}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <a href="Login.dc.html" style="height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #CFCCC2; color: #15161C; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; text-decoration: none">Entrar</a>
+          <a href="Login.dc.html" style="height: 40px; padding: 0 16px; border-radius: 10px; background: #3B3FD8; color: #FFFFFF; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; text-decoration: none">Criar conta</a>
+        </div>
+      </sc-if>
+    </div>
+  </header>
+
+  <main style="max-width: 1240px; margin: 0 auto; padding: 40px 24px 64px; display: flex; flex-direction: column; gap: 28px">
+    <section style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 24px">
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <span style="display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #FDECE3; color: #9A3412; font-size: 13px; font-weight: 700"><span style="width: 8px; height: 8px; border-radius: 4px; background: #C2410C"></span>{{liveCount}} leilões ao vivo agora</span>
+        <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 44px; line-height: 50px; font-weight: 700; letter-spacing: -1px">Encontre seu próximo arremate</h1>
+      </div>
+      <span style="font-size: 14px; color: #4A4D5A">Horários no seu fuso: Brasília (UTC−3)</span>
+    </section>
+
+    <section aria-label="Busca e filtros" style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+        <div style="flex: 1 1 320px; display: flex; align-items: center; gap: 10px; height: 48px; border: 1px solid #CFCCC2; border-radius: 12px; padding: 0 14px">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A4D5A" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+          <label for="ls-busca" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Buscar leilões</label>
+          <input id="ls-busca" type="search" placeholder="Buscar por nome do item, ex.: câmera" value="{{q}}" onChange="{{onQ}}" style="border: 0; outline: 0; flex: 1; min-width: 0; font: 400 15px Inter, sans-serif; color: #15161C; background: transparent">
+        </div>
+        <div role="group" aria-label="Estado" style="display: flex; background: #EEEDE8; border-radius: 12px; padding: 4px; gap: 2px">
+          <sc-for list="{{states}}" as="s" hint-placeholder-count="3">
+            <button type="button" aria-pressed="{{s.on}}" onClick="{{s.pick}}" style="height: 40px; padding: 0 16px; border: 0; border-radius: 9px; background: {{s.bg}}; color: {{s.fg}}; font: 600 14px Inter, sans-serif">{{s.label}}</button>
+          </sc-for>
+        </div>
+        <label for="ls-ordem" style="font-size: 14px; color: #4A4D5A">Ordenar</label>
+        <select id="ls-ordem" style="height: 48px; border: 1px solid #CFCCC2; border-radius: 12px; padding: 0 12px; font: 500 14px Inter, sans-serif; background: #FFFFFF; color: #15161C">
+          <option>Terminam primeiro</option>
+          <option>Começam primeiro</option>
+          <option>Menor preço</option>
+          <option>Mais lances</option>
+        </select>
+      </div>
+      <div role="group" aria-label="Categoria" style="display: flex; flex-wrap: wrap; gap: 8px">
+        <sc-for list="{{cats}}" as="c" hint-placeholder-count="7">
+          <button type="button" aria-pressed="{{c.on}}" onClick="{{c.pick}}" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid {{c.bd}}; background: {{c.bg}}; color: {{c.fg}}; font: 600 13px Inter, sans-serif">{{c.label}}</button>
+        </sc-for>
+      </div>
+    </section>
+
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <span style="font-size: 14px; color: #4A4D5A">{{resultText}}</span>
+    </div>
+
+    <section style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px">
+      <sc-for list="{{items}}" as="a" hint-placeholder-count="8">
+        <a href="{{a.href}}" style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 16px; overflow: hidden; text-decoration: none; color: #15161C; display: flex; flex-direction: column">
+          <div style="height: 190px; background: {{a.ph}}; position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: #4A4D5A">
+            <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>
+            <span style="font-size: 12px">Foto do item</span>
+            <span style="position: absolute; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: {{a.badgeBg}}; color: {{a.badgeFg}}; font-size: 12px; font-weight: 700">{{a.badge}}</span>
+          </div>
+          <div style="padding: 16px; display: flex; flex-direction: column; gap: 8px; flex: 1">
+            <span style="font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4A4D5A">{{a.cat}}</span>
+            <span style="font-size: 17px; font-weight: 600; line-height: 22px">{{a.name}}</span>
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; padding-top: 8px">
+              <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #4A4D5A">{{a.priceLabel}}</span><span style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums">{{a.price}}</span></div>
+              <span style="font-size: 13px; color: #4A4D5A; text-align: right">{{a.meta}}</span>
+            </div>
+          </div>
+          <div style="border-top: 1px solid #E4E2DB; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center">
+            <span style="font-size: 13px; color: #4A4D5A">{{a.when}}</span>
+            <span style="font-size: 14px; font-weight: 700; color: #3B3FD8">{{a.cta}}</span>
+          </div>
+        </a>
+      </sc-for>
+    </section>
+    <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+      <div style="background: #FFFFFF; border: 1px dashed #CFCCC2; border-radius: 16px; padding: 48px; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center">
+        <span style="font-weight: 600; font-size: 18px">Nenhum leilão com esses filtros</span>
+        <span style="font-size: 14px; color: #4A4D5A">Tente outra categoria ou limpe a busca.</span>
+      </div>
+    </sc-if>
+    <button type="button" style="align-self: center; height: 48px; padding: 0 28px; border: 1px solid #CFCCC2; border-radius: 12px; background: #FFFFFF; color: #15161C; font: 600 15px Inter, sans-serif">Carregar mais leilões</button>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"logado":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":1760}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { q: '', cat: 'Todas', st: 'todos' }; }
+  renderVals() {
+    const logado = this.props.logado ?? true;
+    const { q, cat, st } = this.state;
+    const all = [
+      { name: 'Câmera Canon AE-1 Program', cat: 'Fotografia', st: 'live', price: 'R$ 1.240,00', bids: 18, when: 'Termina às 18:42', badge: 'Ao vivo · 01:32', ph: '#E9E6DE' },
+      { name: 'Vitrola Philips anos 70', cat: 'Música', st: 'live', price: 'R$ 685,00', bids: 9, when: 'Termina às 18:56', badge: 'Ao vivo · 15:10', ph: '#E6E8EE' },
+      { name: 'Console Super Nintendo + 2 controles', cat: 'Games', st: 'live', price: 'R$ 920,00', bids: 23, when: 'Termina às 19:05', badge: 'Ao vivo · 24:47', ph: '#EAE4EC' },
+      { name: 'Relógio Seiko 5 automático', cat: 'Acessórios', st: 'live', price: 'R$ 410,00', bids: 6, when: 'Termina às 19:30', badge: 'Ao vivo · 49:02', ph: '#E4ECE7' },
+      { name: 'Guitarra Fender Stratocaster 1998', cat: 'Música', st: 'sched', price: 'R$ 3.500,00', bids: 0, when: 'Abre hoje às 20:00', badge: 'Abre às 20:00', ph: '#ECE6E1' },
+      { name: 'Bicicleta Caloi 10 restaurada', cat: 'Esporte', st: 'sched', price: 'R$ 1.100,00', bids: 0, when: 'Abre amanhã às 10:00', badge: 'Amanhã · 10:00', ph: '#E6E8EE' },
+      { name: 'Coleção de HQs Turma da Mônica', cat: 'Colecionáveis', st: 'sched', price: 'R$ 150,00', bids: 0, when: 'Abre 16/11 às 14:00', badge: '16/11 · 14:00', ph: '#EDEAE0' },
+      { name: 'Game Boy Color edição Pokémon', cat: 'Games', st: 'sched', price: 'R$ 600,00', bids: 0, when: 'Abre 17/11 às 19:30', badge: '17/11 · 19:30', ph: '#EAE4EC' }
+    ];
+    const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const items = all
+      .filter((a) => (st === 'todos' || (st === 'live' ? a.st === 'live' : a.st === 'sched')))
+      .filter((a) => cat === 'Todas' || a.cat === cat)
+      .filter((a) => !q || norm(a.name).includes(norm(q)))
+      .map((a) => {
+        const live = a.st === 'live';
+        return {
+          ...a,
+          href: live ? 'Sala.dc.html' : 'Detalhe.dc.html',
+          badgeBg: live ? '#C2410C' : '#FFFFFF',
+          badgeFg: live ? '#FFFFFF' : '#2B4C7E',
+          priceLabel: live ? 'Preço atual' : 'Preço inicial',
+          meta: live ? a.bids + ' lances' : 'Agendado',
+          cta: live ? (logado ? 'Entrar na sala' : 'Entrar para participar') : 'Ver detalhes'
+        };
+      });
+    const states = [['todos', 'Todos'], ['live', 'Em andamento'], ['sched', 'Agendados']].map(([id, label]) => ({
+      label, on: st === id ? 'true' : 'false', bg: st === id ? '#FFFFFF' : 'transparent', fg: st === id ? '#15161C' : '#4A4D5A',
+      pick: () => this.setState({ st: id })
+    }));
+    const cats = ['Todas', 'Fotografia', 'Música', 'Games', 'Acessórios', 'Esporte', 'Colecionáveis'].map((c) => ({
+      label: c, on: cat === c ? 'true' : 'false', bg: cat === c ? '#15161C' : '#FFFFFF', fg: cat === c ? '#FFFFFF' : '#15161C', bd: cat === c ? '#15161C' : '#CFCCC2',
+      pick: () => this.setState({ cat: c })
+    }));
+    return {
+      logado, deslogado: !logado, q,
+      onQ: (e) => this.setState({ q: e.target.value }),
+      states, cats, items, empty: items.length === 0,
+      liveCount: all.filter((a) => a.st === 'live').length,
+      resultText: items.length + (items.length === 1 ? ' leilão encontrado' : ' leilões encontrados') + ' · agendados e em andamento'
+    };
+  }
+}
+</script>
+</body>
+</html>
