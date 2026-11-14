@@ -49,16 +49,14 @@ navegador ──HTTP (cookies httpOnly)──▶ API Express ──▶ PostgreSQ
 ## 2. Como rodar
 
 ```bash
-# Infra + API (dev, com hot reload) — porta 3333
+# Tudo (dev, com hot reload) — API na 3333, front na 5173
 cp .env.example .env                 # opcional; tudo tem default
 cp api/.env.example api/.env
-docker compose up -d                 # postgres, redis, minio, api
+cp app/.env.example app/.env         # VITE_API_URL=http://localhost:3333
+docker compose up -d                 # postgres, redis, minio, api, app
 
-# Front — porta 5173 (a API aceita CORS de http://localhost:5173)
-cd app
-cp .env.example .env                 # VITE_API_URL=http://localhost:3333
-npm install
-npm run dev
+# Alternativa: front fora do Docker (pare o serviço app antes: docker compose stop app)
+cd app && npm install && npm run dev
 ```
 
 Scripts do front: `npm run dev`, `npm run build` (tsc + vite), `npm run lint`.
@@ -265,7 +263,7 @@ ack do `auction:join`: `{ ok, serverTime, snapshot: { auction, bids: Bid[] (últ
 - [ ] Busca de comitentes no cabeçalho do perfil (design `Perfil.html`) — **não há rota de busca de usuários**.
 - [ ] Reordenar fotos/escolher capa no anunciar.
 - [ ] Testes (Vitest + Testing Library) e e2e da jornada de lance.
-- [ ] Serviço `app` no `compose.yml` (hoje roda só com `npm run dev`).
+- [x] Serviço `app` no `compose.yml` (Vite dev em http://localhost:5173, porta via `APP_PORT`).
 
 ### Infra / entrega
 - [ ] `.env` de produção, segredos, deploy (VM + bucket na nuvem; `S3_PUBLIC_URL` público).
