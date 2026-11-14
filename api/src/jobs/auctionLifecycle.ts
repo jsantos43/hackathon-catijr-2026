@@ -1,56 +1,81 @@
 import { env } from '../config/env.js';
 import { db } from '../prisma/db.js';
-import { emitAuctionStatus, type AuctionStatusEvent } from '../socket/index.js';
+import AuctionRoom, { type RoomAuction } from '../services/AuctionRoom.js';
+import {
+  emitAuctionState,
+  emitAuctionStatus,
+  type AuctionStatusEvent,
+} from '../socket/events.js';
 
-/**
- * RF17/RF18: abre e fecha leilões sem ninguém intervir.
- *
- * O estado fica só no banco (nada de timers em memória), então reiniciar a API não perde nada:
- * na primeira rodada ela abre o que deveria ter aberto e fecha o que já passou do término.
- *
- * Cada transição é um único UPDATE condicional (WHERE status = ...), então:
- * - fechar duas vezes não duplica o resultado: a segunda vez não encontra mais 'RUNNING';
- * - várias instâncias da API podem rodar este job ao mesmo tempo sem conflito;
- * - um lance que esteja travando a linha (SELECT ... FOR UPDATE) termina antes do fechamento,
- *   e o Postgres reavalia o WHERE com o endsAt já prorrogado. Nunca fecha no meio de um lance.
- */
+type OpenedRow = RoomAuction;
+type ClosedRow = AuctionStatusEvent;
 
-type Row = AuctionStatusEvent;
+const cancelActiveOnStartup = (now: Date) => db.$queryRaw<ClosedRow[]>`
+  UPDATE "Auction"
+     SET status = 'CANCELLED', "updatedAt" = ${now}
+   WHERE status IN ('SCHEDULED', 'RUNNING')
+     AND (
+       status = 'RUNNING'
+       OR ("startsAt" <= ${now} AND "endsAt" > ${now})
+     )
+  RETURNING id, status::text AS status, "endsAt", "winnerId", "finalPriceCents"`;
 
-// Agendado -> Em andamento, quando chega o início.
-const openDue = (now: Date) => db.$queryRaw<Row[]>`
+const openDue = (now: Date) => db.$queryRaw<OpenedRow[]>`
   UPDATE "Auction"
      SET status = 'RUNNING', "updatedAt" = ${now}
    WHERE status = 'SCHEDULED' AND "startsAt" <= ${now}
-  RETURNING id, status::text AS status, "endsAt", "winnerId", "finalPriceCents"`;
+  RETURNING id, "ownerId", title, "startingPriceCents", "startsAt", "originalEndsAt", "endsAt"`;
 
-// Em andamento -> Vendido (maior lance vence) ou Encerrado sem lances, no término vigente.
-// Durante a disputa, winnerId/finalPriceCents já guardam o líder e o preço atuais (o lance os
-// atualiza), então no fechamento eles simplesmente viram o resultado.
-const closeDue = (now: Date) => db.$queryRaw<Row[]>`
-  UPDATE "Auction"
-     SET status = (CASE WHEN "bidCount" > 0 THEN 'SOLD' ELSE 'ENDED_NO_BIDS' END)::"AuctionStatus",
-         "winnerId" = CASE WHEN "bidCount" > 0 THEN "winnerId" END,
-         "finalPriceCents" = CASE WHEN "bidCount" > 0 THEN "finalPriceCents" END,
-         "updatedAt" = ${now}
-   WHERE status = 'RUNNING' AND "endsAt" <= ${now}
-  RETURNING id, status::text AS status, "endsAt", "winnerId", "finalPriceCents"`;
+const dueRooms = (now: Date) => db.$queryRaw<Array<{ id: string }>>`
+  SELECT id FROM "Auction"
+   WHERE status = 'RUNNING' AND "endsAt" <= ${now}`;
 
 let running = false;
+let reconciled = false;
+
+const reconcile = async (now: Date) => {
+  const cancelled = await cancelActiveOnStartup(now);
+
+  for (const auction of cancelled) {
+    await AuctionRoom.dispose(auction.id, 'CANCELLED');
+    emitAuctionStatus(auction);
+  }
+
+  reconciled = true;
+};
 
 export const tick = async () => {
-  // Evita duas rodadas sobrepostas se o banco estiver lento.
   if (running) return;
   running = true;
 
   try {
     const now = new Date();
-    // Abre antes de fechar: um leilão que começou e terminou com a API fora do ar
-    // passa pelos dois estados na mesma rodada e termina Encerrado sem lances.
-    const opened = await openDue(now);
-    const closed = await closeDue(now);
+    if (!reconciled) await reconcile(now);
 
-    for (const auction of [...opened, ...closed]) emitAuctionStatus(auction);
+    const opened = await openDue(now);
+    for (const auction of opened) {
+      try {
+        const room = await AuctionRoom.open(auction);
+        emitAuctionState(await room.snapshot());
+      } catch (err) {
+        console.error(`Erro ao abrir a sala do leilão ${auction.id}`, err);
+      }
+      emitAuctionStatus({
+        id: auction.id,
+        status: 'RUNNING',
+        endsAt: auction.endsAt,
+        winnerId: null,
+        finalPriceCents: null,
+      });
+    }
+
+    for (const { id } of await dueRooms(now)) {
+      try {
+        await AuctionRoom.closeById(id);
+      } catch (err) {
+        console.error(`Erro ao fechar o leilão ${id}`, err);
+      }
+    }
   } catch (err) {
     console.error('Erro ao abrir/fechar leilões', err);
   } finally {

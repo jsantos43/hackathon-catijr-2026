@@ -7,6 +7,9 @@ const envSchema = z.object({
 
   DATABASE_URL: z.url(),
 
+  REDIS_URL: z.url().default("redis://localhost:6379"),
+  REDIS_ROOM_TTL_SECONDS: z.coerce.number().int().positive().default(24 * 60 * 60),
+
   JWT_SECRET: z.string().min(16, "JWT_SECRET precisa ter pelo menos 16 caracteres"),
   // Em segundos. Access token curto; o refresh token renova a sessão com o uso (RF02).
   ACCESS_TOKEN_TTL: z.coerce.number().int().positive().default(15 * 60),
@@ -34,6 +37,15 @@ const envSchema = z.object({
   AUCTION_EDIT_LOCK_SECONDS: z.coerce.number().int().nonnegative().default(30 * 60),
   // Intervalo do processo que abre/fecha leilões (RF17/RF18).
   AUCTION_TICK_MS: z.coerce.number().int().positive().default(1000),
+
+  // RF15: lance a menos de 2 min do fim leva o término para 2 min depois do lance,
+  // com no máximo 30 min de prorrogação acumulada.
+  AUCTION_EXTENSION_WINDOW_SECONDS: z.coerce.number().int().nonnegative().default(2 * 60),
+  AUCTION_EXTENSION_SECONDS: z.coerce.number().int().positive().default(2 * 60),
+  AUCTION_MAX_EXTENSION_SECONDS: z.coerce.number().int().nonnegative().default(30 * 60),
+
+  // RF09: quantos lances recentes a sala envia no snapshot.
+  AUCTION_RECENT_BIDS_LIMIT: z.coerce.number().int().positive().default(10),
 
   // Quantos itens um lote (leilão) pode ter.
   AUCTION_MAX_ITEMS: z.coerce.number().int().positive().default(10),

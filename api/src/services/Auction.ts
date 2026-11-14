@@ -10,8 +10,9 @@ import {
   type MyAuctionsQuery,
   type UpdateAuctionData,
 } from '../schemas/Auction.js';
-import { emitAuctionStatus } from '../socket/index.js';
+import { emitAuctionStatus } from '../socket/events.js';
 import { minimumBidCents } from '../utils/money.js';
+import AuctionRoom from './AuctionRoom.js';
 import { itemSelect, lockOwnItems, serializeItem } from './Item.js';
 
 type Tx = Prisma.TransactionClient;
@@ -38,6 +39,15 @@ const auctionSelect = {
 } as const satisfies Prisma.AuctionSelect;
 
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof auctionSelect }>;
+
+type EndedAuctionRow = {
+  id: string;
+  status: string;
+  endsAt: Date;
+  winnerId: string | null;
+  finalPriceCents: number | null;
+  bidCount: number;
+};
 
 const serializeAuction = ({ items, ...auction }: AuctionRow) => ({
   ...auction,
@@ -298,6 +308,41 @@ class Auction {
     return Auction.readById(id);
   }
 
+  static async onEnded(result: {
+    auctionId: string;
+    bidCount: number;
+    winnerId: string | null;
+    finalPriceCents: number | null;
+  }) {
+    const now = new Date();
+    const hasBids = result.bidCount > 0;
+
+    const [row] = await db.$queryRaw<EndedAuctionRow[]>`
+      UPDATE "Auction"
+         SET status = (CASE WHEN ${hasBids}::boolean THEN 'SOLD' ELSE 'ENDED_NO_BIDS' END)::"AuctionStatus",
+             "bidCount" = ${result.bidCount}::int,
+             "winnerId" = CASE WHEN ${hasBids}::boolean THEN ${result.winnerId}::uuid ELSE NULL END,
+             "finalPriceCents" = CASE WHEN ${hasBids}::boolean THEN ${result.finalPriceCents}::int ELSE NULL END,
+             "updatedAt" = ${now}
+       WHERE id = ${result.auctionId}::uuid AND status = 'RUNNING'
+      RETURNING id, status::text AS status, "endsAt", "winnerId", "finalPriceCents", "bidCount"`;
+
+    if (!row) {
+      console.log(`Leilão ${result.auctionId} já estava encerrado`);
+      return null;
+    }
+
+    if (row.bidCount > 0) {
+      console.log(
+        `Leilão ${row.id} encerrado. Vencedor: ${row.winnerId} por ${row.finalPriceCents} centavos`,
+      );
+    } else {
+      console.log(`Leilão ${row.id} encerrado sem lances`);
+    }
+
+    return row;
+  }
+
   /**
    * RF08: cancela enquanto Agendado ou Em andamento sem lances. Nada é apagado, e os itens
    * ficam livres para entrar em outro lote.
@@ -305,22 +350,38 @@ class Auction {
    * recusado) ou depois (e encontra o leilão já cancelado).
    */
   static async cancel(id: string, userId: string) {
-    await db.$transaction(async (tx) => {
-      const auction = await lockOwnAuction(tx, id, userId);
-      const now = new Date();
-
-      if (!OPEN_STATUSES.includes(auction.status) || auction.endsAt <= now) {
-        throw new Unprocessable('Only scheduled or running auctions can be cancelled');
-      }
-      if (auction.bidCount > 0) {
-        throw new Unprocessable('Auctions with bids cannot be cancelled');
-      }
-
-      await tx.auction.update({
-        where: { id },
-        data: { status: AuctionStatus.CANCELLED },
-      });
+    const frozen = await AuctionRoom.freezeForCancel(id).catch((err) => {
+      console.error(`Erro ao travar a sala do leilão ${id} para cancelamento`, err);
+      return { ok: false, code: 'REDIS_ERROR' };
     });
+
+    if (!frozen.ok && frozen.code === 'HAS_BIDS') {
+      throw new Unprocessable('Auctions with bids cannot be cancelled');
+    }
+
+    try {
+      await db.$transaction(async (tx) => {
+        const auction = await lockOwnAuction(tx, id, userId);
+        const now = new Date();
+
+        if (!OPEN_STATUSES.includes(auction.status) || auction.endsAt <= now) {
+          throw new Unprocessable('Only scheduled or running auctions can be cancelled');
+        }
+        if (auction.bidCount > 0) {
+          throw new Unprocessable('Auctions with bids cannot be cancelled');
+        }
+
+        await tx.auction.update({
+          where: { id },
+          data: { status: AuctionStatus.CANCELLED },
+        });
+      });
+    } catch (err) {
+      await AuctionRoom.unfreezeForCancel(id).catch(() => undefined);
+      throw err;
+    }
+
+    await AuctionRoom.dispose(id, 'CANCELLED');
 
     const auction = await Auction.readById(id);
     emitAuctionStatus(auction);

@@ -1,6 +1,6 @@
 // RF14: o lance mínimo é calculado só pelo sistema, a partir do estado do leilão.
 // Tabela de incrementos de referência do documento, em centavos (RF19).
-const INCREMENTS: Array<[upToCents: number, incrementCents: number]> = [
+export const INCREMENTS: Array<[upToCents: number, incrementCents: number]> = [
   [9_999, 100],
   [49_999, 500],
   [99_999, 1_000],
