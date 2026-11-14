@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Jornadas e mapa de páginas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3B3FD8}a:hover{color:#2F32B5}
+</style>
+</helmet>
+<div style="width: 1600px; height: 1060px; box-sizing: border-box; padding: 64px; background: #F6F5F1; font-family: Inter, system-ui, sans-serif; color: #15161C; display: flex; flex-direction: column; gap: 32px">
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 32px; line-height: 40px; font-weight: 700">Jornadas principais</h1>
+    <span style="font-size: 16px; color: #4A4D5A">Cada linha é um caminho que a banca pode testar na demo, de ponta a ponta, só pela interface (RNF02).</span>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 16px">
+    <sc-for list="{{journeys}}" as="j" hint-placeholder-count="4">
+      <div style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 16px; padding: 20px 24px; display: flex; align-items: center; gap: 24px">
+        <div style="width: 180px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px">
+          <span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: {{j.tagBg}}; color: {{j.tagFg}}">{{j.tag}}</span>
+          <span style="font-weight: 600; font-size: 16px">{{j.title}}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1">
+          <sc-for list="{{j.steps}}" as="s" hint-placeholder-count="5">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <sc-if value="{{s.notFirst}}" hint-placeholder-val="{{ true }}">
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8C8F9A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+              </sc-if>
+              <div style="padding: 10px 14px; border-radius: 10px; background: {{s.bg}}; color: {{s.fg}}; display: flex; flex-direction: column; gap: 2px; min-width: 120px">
+                <span style="font-size: 14px; font-weight: 600">{{s.label}}</span>
+                <span style="font-size: 12px; opacity: 0.85">{{s.sub}}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 16px">
+    <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700">Mapa de páginas</h2>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{pages}}" as="p" hint-placeholder-count="10">
+        <div style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+            <span style="font-weight: 600; font-size: 15px">{{p.name}}</span>
+            <span style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: {{p.accBg}}; color: {{p.accFg}}">{{p.acc}}</span>
+          </div>
+          <span style="font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #4A4D5A">{{p.route}}</span>
+          <span style="font-size: 12px; color: #4A4D5A">{{p.req}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1060}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const N = { bg: '#F6F5F1', fg: '#15161C' };
+    const P = { bg: '#ECECFC', fg: '#2F32B5' };
+    const L = { bg: '#FDECE3', fg: '#9A3412' };
+    const W = { bg: '#E3F4EC', fg: '#0B5E40' };
+    const mk = (steps) => steps.map((s, i) => ({ ...s, notFirst: i > 0 }));
+    return {
+      journeys: [
+        { tag: 'Visitante', tagBg: '#EEEDE8', tagFg: '#4A4D5A', title: 'Descobrir e entrar', steps: mk([
+          { label: 'Listagem', sub: 'pública, sem login', ...N },
+          { label: 'Detalhe', sub: 'fotos e horários', ...N },
+          { label: 'Entrar na sala', sub: 'pede login (RF04)', ...P },
+          { label: 'Login / Cadastro', sub: 'volta para a sala', ...N },
+          { label: 'Sala', sub: 'participante', ...L }
+        ]) },
+        { tag: 'Comprador', tagBg: '#ECECFC', tagFg: '#2F32B5', title: 'Disputar um item', steps: mk([
+          { label: 'Sala ao vivo', sub: 'estado em tempo real', ...L },
+          { label: 'Dar lance', sub: 'valor ≥ mínimo', ...P },
+          { label: 'Líder', sub: 'botão bloqueia', ...W },
+          { label: 'Superado', sub: 'aviso na hora (RF26)', ...L },
+          { label: 'Novo lance', sub: 'mínimo atualizado', ...P },
+          { label: 'Vendido', sub: 'você venceu', ...W }
+        ]) },
+        { tag: 'Comitente', tagBg: '#FFF4D6', tagFg: '#6B4600', title: 'Anunciar um item', steps: mk([
+          { label: 'Anunciar item', sub: 'nome, fotos, preço', ...P },
+          { label: 'Agendado', sub: 'editar ou cancelar', ...N },
+          { label: 'Em andamento', sub: 'assiste como espectador', ...L },
+          { label: 'Vendido', sub: 'vencedor e valor', ...W },
+          { label: 'Meus leilões', sub: 'histórico completo', ...N }
+        ]) },
+        { tag: 'Nível 2', tagBg: '#EEEDE8', tagFg: '#4A4D5A', title: 'Relistar', steps: mk([
+          { label: 'Encerrado sem lances', sub: 'ou Cancelado', ...N },
+          { label: 'Relistar', sub: 'campos editáveis (RF28)', ...P },
+          { label: 'Novo leilão', sub: 'Agendado', ...N },
+          { label: 'Um ativo por item', sub: 'nunca dois ao mesmo tempo', ...W }
+        ]) }
+      ],
+      pages: [
+        { name: 'Listagem', route: '/', acc: 'Público', accBg: '#EEEDE8', accFg: '#4A4D5A', req: 'RF20, RF21 · Núcleo' },
+        { name: 'Detalhe', route: '/leiloes/:id', acc: 'Público', accBg: '#EEEDE8', accFg: '#4A4D5A', req: 'RF20 · Núcleo' },
+        { name: 'Entrar / Cadastro', route: '/entrar', acc: 'Público', accBg: '#EEEDE8', accFg: '#4A4D5A', req: 'RF01, RF02 · Núcleo' },
+        { name: 'Sala', route: '/leiloes/:id/sala', acc: 'Login', accBg: '#ECECFC', accFg: '#2F32B5', req: 'RF09 a RF15 · Núcleo' },
+        { name: 'Criar leilão', route: '/anunciar', acc: 'Login', accBg: '#ECECFC', accFg: '#2F32B5', req: 'RF05 a RF07 · Núcleo' },
+        { name: 'Meus leilões', route: '/meus-leiloes', acc: 'Login', accBg: '#ECECFC', accFg: '#2F32B5', req: 'RF08, RF23, RF28' },
+        { name: 'Editar leilão', route: '/meus-leiloes/:id', acc: 'Login', accBg: '#ECECFC', accFg: '#2F32B5', req: 'RF23 · Nível 2' },
+        { name: 'Minhas participações', route: '/participacoes', acc: 'Login', accBg: '#ECECFC', accFg: '#2F32B5', req: 'RF27 · Nível 2' },
+        { name: 'Perfil do comitente', route: '/comitentes/:id', acc: 'Público', accBg: '#EEEDE8', accFg: '#4A4D5A', req: 'RF22 · Nível 2' },
+        { name: 'Quero vender', route: '/quero-vender', acc: 'Bônus', accBg: '#FFF4D6', accFg: '#6B4600', req: 'RF29, RF30 · pontuação' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

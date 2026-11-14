@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Detalhe do leilão agendado</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3B3FD8}a:hover{color:#2F32B5}
+</style>
+</helmet>
+<div style="min-height: 1240px; background: #F6F5F1; font-family: Inter, system-ui, sans-serif; color: #15161C">
+  <header style="background: #FFFFFF; border-bottom: 1px solid #E4E2DB">
+    <div style="max-width: 1240px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px">
+      <a href="Listagem.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #15161C">
+        <span style="width: 36px; height: 36px; border-radius: 10px; background: #3B3FD8; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 13-7.5 7.5a2.12 2.12 0 0 1-3-3L11 10"></path><path d="m16 16 6-6"></path><path d="m8 8 6-6"></path><path d="m9 7 8 8"></path><path d="m21 11-8-8"></path></svg></span>
+        <span style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700">Arremate</span>
+      </a>
+      <nav aria-label="Principal" style="display: flex; gap: 24px; flex-wrap: wrap; flex: 1">
+        <a href="Listagem.dc.html" style="color: #15161C; font-weight: 600; font-size: 15px; text-decoration: none; border-bottom: 2px solid #3B3FD8; padding-bottom: 4px">Leilões</a>
+        <a href="Participacoes.dc.html" style="color: #4A4D5A; font-weight: 500; font-size: 15px; text-decoration: none; padding-bottom: 4px">Minhas participações</a>
+        <a href="MeusLeiloes.dc.html" style="color: #4A4D5A; font-weight: 500; font-size: 15px; text-decoration: none; padding-bottom: 4px">Meus leilões</a>
+      </nav>
+      <a href="Criar.dc.html" style="height: 40px; padding: 0 16px; border-radius: 10px; background: #3B3FD8; color: #FFFFFF; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; text-decoration: none">Anunciar item</a>
+      <span aria-label="Sua conta: João S." style="width: 40px; height: 40px; border-radius: 20px; background: #ECECFC; color: #2F32B5; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px">JS</span>
+    </div>
+  </header>
+
+  <main style="max-width: 1240px; margin: 0 auto; padding: 24px 24px 64px; display: flex; flex-direction: column; gap: 24px">
+    <nav aria-label="Caminho" style="font-size: 14px; color: #4A4D5A"><a href="Listagem.dc.html">Leilões</a> / Música / Guitarra Fender Stratocaster 1998</nav>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start">
+      <section aria-label="Fotos" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+        <div style="height: 480px; border-radius: 20px; background: #ECE6E1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: #4A4D5A">
+          <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>
+          <span style="font-size: 14px">Foto 1 de 4</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+          <button type="button" aria-label="Foto 1" style="height: 96px; border-radius: 12px; border: 2px solid #3B3FD8; background: #ECE6E1"></button>
+          <button type="button" aria-label="Foto 2" style="height: 96px; border-radius: 12px; border: 1px solid #E4E2DB; background: #E6E2DA"></button>
+          <button type="button" aria-label="Foto 3" style="height: 96px; border-radius: 12px; border: 1px solid #E4E2DB; background: #E9E6DE"></button>
+          <button type="button" aria-label="Foto 4" style="height: 96px; border-radius: 12px; border: 1px solid #E4E2DB; background: #E3DED5"></button>
+        </div>
+      </section>
+
+      <aside style="flex: 1 1 380px; display: flex; flex-direction: column; gap: 16px">
+        <div style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 18px">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap">
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: #E8EEF8; color: #2B4C7E; font-size: 13px; font-weight: 600">Agendado</span>
+            <span style="display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 999px; background: #EEEDE8; color: #4A4D5A; font-size: 13px; font-weight: 600">Música</span>
+          </div>
+          <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 30px; line-height: 36px; font-weight: 700">Guitarra Fender Stratocaster 1998</h1>
+          <a href="Perfil.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #15161C">
+            <span style="width: 32px; height: 32px; border-radius: 16px; background: #FFF4D6; color: #6B4600; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px">RA</span>
+            <span style="font-size: 14px">Anunciado por <b style="color: #3B3FD8">Rafael Almeida</b></span>
+          </a>
+          <div style="background: #E8EEF8; border-radius: 14px; padding: 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px">
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #2B4C7E">Abre em</span><span style="font-size: 13px; color: #2B4C7E">hoje, às 20:00 (seu horário)</span></div>
+            <span style="font-family: 'Space Grotesk', sans-serif; font-size: 34px; font-weight: 700; color: #1F3A63; font-variant-numeric: tabular-nums">02:58:12</span>
+          </div>
+          <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 13px; color: #4A4D5A">Preço inicial</dt><dd style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums">R$ 3.500,00</dd></div>
+            <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 13px; color: #4A4D5A">Duração</dt><dd style="margin: 0; font-size: 18px; font-weight: 600">30 minutos</dd></div>
+            <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 13px; color: #4A4D5A">Término previsto</dt><dd style="margin: 0; font-size: 16px; font-weight: 600">20:30</dd></div>
+            <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 13px; color: #4A4D5A">Pode prorrogar até</dt><dd style="margin: 0; font-size: 16px; font-weight: 600">21:00</dd></div>
+          </dl>
+          <button type="button" disabled style="height: 56px; border: 0; border-radius: 12px; background: #E4E2DB; color: #4A4D5A; font: 700 16px Inter, sans-serif">A sala abre às 20:00</button>
+          <span style="font-size: 13px; line-height: 19px; color: #4A4D5A; text-align: center">Quando abrir, você escolhe entrar como participante ou só assistir.</span>
+        </div>
+        <div style="background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 20px; padding: 20px 24px; display: flex; flex-direction: column; gap: 12px">
+          <span style="font-weight: 600; font-size: 16px">Como o lance mínimo cresce</span>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums">
+            <thead><tr><th scope="col" style="text-align: left; padding: 6px 0; color: #4A4D5A; font-weight: 600; border-bottom: 1px solid #E4E2DB">Preço atual</th><th scope="col" style="text-align: right; padding: 6px 0; color: #4A4D5A; font-weight: 600; border-bottom: 1px solid #E4E2DB">Incremento</th></tr></thead>
+            <tbody>
+              <tr><td style="padding: 6px 0">até R$ 99,99</td><td style="text-align: right">R$ 1,00</td></tr>
+              <tr><td style="padding: 6px 0">R$ 100 a R$ 499,99</td><td style="text-align: right">R$ 5,00</td></tr>
+              <tr><td style="padding: 6px 0">R$ 500 a R$ 999,99</td><td style="text-align: right">R$ 10,00</td></tr>
+              <tr style="background: #ECECFC"><td style="padding: 6px 8px; font-weight: 600">R$ 1.000 a R$ 4.999,99</td><td style="text-align: right; padding-right: 8px; font-weight: 600">R$ 50,00</td></tr>
+              <tr><td style="padding: 6px 0">R$ 5.000 a R$ 24.999,99</td><td style="text-align: right">R$ 100,00</td></tr>
+              <tr><td style="padding: 6px 0">a partir de R$ 25.000</td><td style="text-align: right">R$ 500,00</td></tr>
+            </tbody>
+          </table>
+          <span style="font-size: 13px; line-height: 19px; color: #4A4D5A">O primeiro lance pode ser igual ao preço inicial. Um lance com menos de 2 min no relógio leva o término para 2 min depois dele, até 30 min a mais no total.</span>
+        </div>
+      </aside>
+    </div>
+
+    <section style="display: flex; flex-wrap: wrap; gap: 32px">
+      <div style="flex: 999 1 560px; min-width: 0; background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-size: 20px; font-weight: 600">Descrição</h2>
+        <p style="margin: 0; font-size: 16px; line-height: 26px; color: #2A2C35">[DESCRIÇÃO DO ITEM ESCRITA PELO COMITENTE: estado de conservação, o que acompanha, detalhes de uso. Até 2.000 caracteres.]</p>
+        <div style="border-top: 1px solid #E4E2DB; padding-top: 12px; font-size: 14px; color: #4A4D5A">Acréscimo em 14/11, 16:10: [TEXTO ACRESCENTADO DEPOIS DA PUBLICAÇÃO]</div>
+      </div>
+      <div style="flex: 1 1 380px; background: #FFFFFF; border: 1px solid #E4E2DB; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-size: 20px; font-weight: 600">Histórico deste item</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px"><span>Leilão de 08/11</span><span style="padding: 4px 10px; border-radius: 999px; background: #EEEDE8; color: #4A4D5A; font-weight: 600; font-size: 12px">Encerrado sem lances</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px"><span>Leilão de hoje</span><span style="padding: 4px 10px; border-radius: 999px; background: #E8EEF8; color: #2B4C7E; font-weight: 600; font-size: 12px">Agendado</span></div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

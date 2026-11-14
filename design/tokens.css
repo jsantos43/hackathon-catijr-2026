@@ -1,0 +1,60 @@
+/* Arremate — design tokens. Importe uma vez no app (ex.: src/styles/tokens.css). */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  /* Cores de função */
+  --primary: #3B3FD8;        /* ações, links, botão de lance */
+  --primary-hover: #2F32B5;
+  --primary-tint: #ECECFC;
+  --primary-focus: #A9ABF5;  /* outline de foco */
+
+  --live: #C2410C;           /* ao vivo, minutos finais, superado */
+  --live-tint: #FDECE3;
+  --live-text: #9A3412;      /* texto sobre --live-tint */
+  --live-border: #F5C4AA;
+
+  --win: #0F7B53;            /* vendido, líder, lance aceito */
+  --win-tint: #E3F4EC;
+  --win-text: #0B5E40;
+
+  --warn: #8A5A00;           /* prorrogação, reconexão */
+  --warn-tint: #FFF4D6;
+  --warn-text: #6B4600;
+
+  --danger: #B42318;         /* recusado, erro, cancelar */
+  --danger-tint: #FDECEA;
+  --danger-text: #8F1C13;
+  --danger-border: #F3C4BF;
+
+  --sched-tint: #E8EEF8;     /* agendado */
+  --sched-text: #2B4C7E;
+
+  /* Neutros */
+  --ink: #15161C;
+  --ink-2: #4A4D5A;          /* texto secundário (passa 4.5:1 no branco e no papel) */
+  --ink-3: #6B6E7B;
+  --paper: #F6F5F1;          /* fundo da página */
+  --surface: #FFFFFF;        /* cards */
+  --line: #E4E2DB;
+  --line-strong: #CFCCC2;    /* borda de inputs e botões secundários */
+  --muted-bg: #EEEDE8;
+  --disabled-bg: #E4E2DB;
+
+  /* Tipografia */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+
+  /* Forma e espaço (múltiplos de 4) */
+  --radius-sm: 8px;
+  --radius-md: 10px;   /* inputs, botões */
+  --radius-lg: 12px;   /* botão de lance */
+  --radius-card: 16px;
+  --radius-panel: 20px;
+  --radius-pill: 999px;
+  --control-h: 44px;   /* alvo de toque mínimo */
+  --bid-h: 56px;
+  --container: 1240px;
+}
+
+/* Valores em dinheiro e relógios: números de largura fixa */
+.num { font-variant-numeric: tabular-nums; }
