@@ -4,27 +4,34 @@ import { Unauthorized } from '../errors/index.js';
 import type { LoginData } from '../schemas/Auth.js';
 import Service from '../services/Auth.js';
 
-const setAuthCookies = (res: Response, tokens: { accessToken: string; refreshToken: string }) => {
+// O atributo `secure` depende do protocolo real da requisição (via `req.secure`, que respeita o
+// `trust proxy` do Express), e não do NODE_ENV: em produção sobre HTTP o navegador recusaria um
+// cookie `secure` e a sessão sumiria ao recarregar a página.
+const setAuthCookies = (
+  req: Request,
+  res: Response,
+  tokens: { accessToken: string; refreshToken: string },
+) => {
   res.cookie('accessToken', tokens.accessToken, {
     httpOnly: true,
-    secure: env.isProd,
+    secure: req.secure,
     sameSite: 'lax',
     maxAge: env.accessTokenTtl * 1000,
   });
 
   res.cookie('refreshToken', tokens.refreshToken, {
     httpOnly: true,
-    secure: env.isProd,
+    secure: req.secure,
     sameSite: 'lax',
     path: '/auth',
     maxAge: env.refreshTokenTtl * 1000,
   });
 };
 
-const clearAuthCookies = (res: Response) => {
-  res.clearCookie('accessToken');
+const clearAuthCookies = (req: Request, res: Response) => {
+  res.clearCookie('accessToken', { secure: req.secure, sameSite: 'lax' });
   // Precisa do mesmo path usado ao criar, senão o navegador não remove o cookie.
-  res.clearCookie('refreshToken', { path: '/auth' });
+  res.clearCookie('refreshToken', { path: '/auth', secure: req.secure, sameSite: 'lax' });
 };
 
 class Auth {
@@ -39,7 +46,7 @@ class Auth {
         req.body.password,
       );
 
-      setAuthCookies(res, { accessToken, refreshToken });
+      setAuthCookies(req, res, { accessToken, refreshToken });
 
       return res.status(200).json({ success: true, user });
     } catch (err) {
@@ -51,11 +58,11 @@ class Auth {
     try {
       const tokens = await Service.refresh(req.cookies?.['refreshToken']);
 
-      setAuthCookies(res, tokens);
+      setAuthCookies(req, res, tokens);
 
       return res.status(200).json({ success: true });
     } catch (err) {
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
       return next(err);
     }
   }
@@ -65,7 +72,7 @@ class Auth {
       if (!req.user || req.sessionVersion === undefined) throw new Unauthorized();
 
       await Service.logout(req.user.id, req.sessionVersion);
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
 
       return res.status(200).json({ success: true });
     } catch (err) {

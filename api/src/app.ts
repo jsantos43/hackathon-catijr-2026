@@ -12,6 +12,11 @@ import routes from './routes/index.js';
  */
 export const app = express();
 
+// Atrás do nginx de produção (proxy reverso): confia no primeiro hop para que `req.secure`
+// reflita o protocolo real (X-Forwarded-Proto). Sem isso, os cookies `secure` seriam recusados
+// pelo navegador quando a produção roda em HTTP.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 // credentials: true para o navegador mandar os cookies de autenticação.
 app.use(cors({ origin: env.CORS_ORIGIN.split(','), credentials: true }));
