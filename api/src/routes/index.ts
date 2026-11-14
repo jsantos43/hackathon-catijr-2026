@@ -1,5 +1,7 @@
 import type { Express, Request, Response } from 'express';
+import auction from './auction.js';
 import auth from './auth.js';
+import item from './item.js';
 import user from './user.js';
 
 const routes = (app: Express) => {
@@ -8,7 +10,7 @@ const routes = (app: Express) => {
     res.json({ mensagem: 'Olá, mundo!', serverTime: new Date().toISOString() });
   });
 
-  app.use(user, auth);
+  app.use(user, auth, item, auction);
 };
 
 export default routes;
