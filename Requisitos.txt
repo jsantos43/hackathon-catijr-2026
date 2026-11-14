@@ -1,0 +1,202 @@
+# Requisitos – Leilão Online (Hackathon) – versão caveman
+
+## 1) Apresentação
+
+Equipe ter 8 hora sem parar. Equipe fazer site de leilão tempo real. Site morar em VM. Comitente mostrar item. Comprador brigar por lance ao vivo. Leilão abrir sozinho, fechar sozinho. Ter um vencedor.
+
+Tudo de mentira. Nenhum dinheiro real. Ganhar leilão = compra feita. Stack livre. Organização dar VM e armazém de nuvem pra cada equipe.
+
+Qualquer ferramenta pode. IA também pode. Mas banca perguntar sobre código e escolha. Qualquer membro da equipe poder ser chamado pra responder. Ugh.
+
+Documento dizer **O QUE** sistema precisar garantir. Não dizer **COMO**. Arquitetura, tecnologia, protocolo, regra de negócio: equipe escolher. Escolha ser centro do pitch. Desafio grande: sistema continuar certo quando muita gente mexer junto e quando tempo passar.
+
+## 2) Como ler
+
+**Nível:**
+- **Núcleo:** obrigatório. Sozinho já ser leilão completo e mostrável.
+- **Nível 2:** separar melhor entrega de entrega normal.
+- **Bônus:** extra. Só contar depois de Núcleo e parte de Nível 2.
+
+**Marcação:**
+- **Garantia:** coisa que não negociar. Banca testar. Jeito de fazer: livre.
+- **Decisão da equipe:** documento dar princípio. Equipe escolher regra, escrever no README, defender no pitch.
+- **Como verificar:** cena que dá pra ver e provar requisito funcionar. Só aparecer em alguns. Nos outros, equipe pensar como provar.
+
+Coisa não escrita aqui = decisão da equipe também.
+
+## 3) Glossário
+
+Cada palavra ter um sentido só.
+
+- **Item:** coisa anunciada com nome, descrição, categoria e pelo menos 3 foto.
+- **Leilão:** venda de um item, com início, duração e preço inicial. Item poder ter vários leilão com o tempo.
+- **Sala:** lugar tempo real de leilão rolando. Ali acompanhar e dar lance.
+- **Preço inicial:** valor mínimo do primeiro lance.
+- **Lance mínimo atual:** menor valor aceito pro próximo lance. Sistema calcular.
+- **Líder:** dono do maior lance aceito até agora.
+- **Prorrogação:** tempo a mais no fim do leilão porque teve lance perto do fim.
+- **Comprador:** papel que todo usuário ter desde cadastro.
+- **Comitente:** usuário que também poder anunciar item.
+- **Participante:** usuário na sala que poder dar lance.
+- **Espectador:** usuário na sala que só olhar (Nível 2).
+
+## 4) Escopo
+
+- **Núcleo:** cadastro e login · criar e cancelar leilão com foto na nuvem · sala tempo real com lance válido · prorrogação · abrir e fechar automático · lista de leilão · sistema na VM.
+- **Nível 2:** busca com filtro · perfil público do comitente · política completa de editar e cancelar · reconectar sem perder estado · modo espectador · aviso de lance superado · limite de frequência de lance · página "Minhas participações" · relistar.
+- **Bônus:** pontuação, habilitar comitente e crédito com reserva · extra de nuvem e operação (seção 7).
+
+## 5) Requisitos do Núcleo
+
+Tudo aqui obrigatório. Tudo funcionar ponta a ponta no sistema publicado.
+
+### 5.1) Conta e acesso
+
+- **RF01 · Garantia.** Usuário cadastrar com nome de exibição, e-mail e senha. Depois fazer login. Um e-mail = uma conta.
+- **RF02 · Garantia + Decisão.** Toda ação protegida, inclusive cada lance, só valer com sessão válida. Sessão expirar. Equipe decidir quanto tempo dura e se renova com uso.
+- **RF03 · Garantia.** Todo usuário ser comprador. No Núcleo, qualquer usuário logado também poder anunciar. Habilitar comitente por regra = Bônus. Não existir administrador.
+- **RF04 · Garantia.** Listagem ser pública. Entrar na sala exigir login. Comitente nunca dar lance no próprio leilão.
+  *Como verificar:* visitante ver listagem mas não entrar na sala. Comitente tentar dar lance no próprio leilão e ser recusado.
+
+### 5.2) Leilão e foto
+
+- **RF05 · Garantia + Decisão.** Usuário criar leilão com nome, descrição, categoria, pelo menos 3 foto, preço inicial, hora de início e duração. Equipe definir categoria e todos os limite (tamanho de texto, quantidade de foto, antecedência mínima e máxima, duração mínima e máxima).
+- **RF06 · Garantia.** Limite ser fácil de mudar, pra demo usar leilão curto (exemplo: abrir em 1 minuto e durar 3).
+- ~~**RF07 · Garantia + Decisão.** Foto ficar no armazém de nuvem da organização, nunca no banco nem no disco da VM. Arquivo enviado ser validado. Equipe decidir tipo e tamanho aceito.~~ *(riscado no PDF)*
+- **RF08 · Garantia.** Comitente cancelar o próprio leilão enquanto estar Agendado ou Em andamento sem lance. Leilão com lance não poder cancelar. Cancelar não apagar nada: leilão ficar registrado como Cancelado.
+
+### 5.3) Ciclo de vida do leilão
+
+- **RN01 · Garantia.** Leilão sempre estar em um de cinco estado. Só essas transição existir. Leilão Em andamento com lance só poder terminar Vendido.
+
+**Estados:** Agendado, Em andamento, Vendido, Encerrado sem lances, Cancelado.
+
+**Transições (5):**
+1. Agendado → Em andamento (chegar o início)
+2. Agendado → Cancelado (antes do início, pelo comitente)
+3. Em andamento → Cancelado (só se não ter lance)
+4. Em andamento → Vendido (término com lance)
+5. Em andamento → Encerrado sem lances (término sem lance)
+
+Vendido, Encerrado sem lances e Cancelado ser final: de lá não sair transição nenhuma.
+
+### 5.4) Sala tempo real
+
+- **RF09 · Garantia + Decisão.** Enquanto leilão Em andamento, todos na sala ver mudança na hora, sem recarregar página: preço atual, lance mínimo atual, líder, tempo restante, total de lance e últimos lance. No fim, todos ver resultado: Vendido, com vencedor e valor, ou Encerrado sem lances.
+  Equipe decidir tecnologia de tempo real, quantos lance recente mostrar e como identificar líder sem mostrar nome completo de ninguém.
+
+### 5.5) Lance
+
+- **RF10 · Garantia.** Lance só ser aceito se TODAS condição forem verdade na hora que processar:
+  1. autor ter sessão válida e estar na sala do leilão;
+  2. leilão estar Em andamento e ainda não passar do horário de término;
+  3. autor não ser comitente nem líder atual;
+  4. valor ser maior ou igual ao lance mínimo vigente AGORA, não o que era quando usuário clicar.
+
+  Todo lance recusado dizer ao autor o motivo e o lance mínimo atual. Lance ser irrevogável: não existir desfazer.
+- **RF11 · Garantia.** Lance ao mesmo tempo no mesmo leilão nunca deixar sistema bagunçado: quem chegar primeiro ter prioridade, e nunca aceitar dois lance que juntos quebrar regra do valor. Sala só ver novo estado depois que lance ser gravado de verdade.
+- **RF12 · Garantia.** Se mesmo lance for enviado de novo (clique duplo, rede falhar, sessão expirar), sistema devolver resultado original e nunca criar segundo lance.
+- **RF14 · Decisão.** Lance mínimo atual ser calculado só pelo sistema. Tela só mostrar valor. Regra livre, mas sempre dar mesmo resultado pro mesmo estado do leilão, crescer a cada lance aceito e depender só do estado do leilão. Primeiro lance poder ser igual ao preço inicial. Referência pra quem não querer criar a sua:
+
+| Preço atual | Incremento |
+|---|---|
+| Até R$ 99,99 | R$ 1,00 |
+| R$ 100,00 a R$ 499,99 | R$ 5,00 |
+| R$ 500,00 a R$ 999,99 | R$ 10,00 |
+| R$ 1.000,00 a R$ 4.999,99 | R$ 50,00 |
+| R$ 5.000,00 a R$ 24.999,99 | R$ 100,00 |
+| A partir de R$ 25.000,00 | R$ 500,00 |
+
+- **RF15 · Garantia + Decisão.** Ninguém vencer com lance de último segundo sem dar chance de resposta pros outros. E leilão não poder esticar pra sempre. Equipe definir regra de prorrogação e limite. Referência: lance que deixar menos de 2 minuto no relógio levar término pra 2 minuto depois do lance, no máximo 30 minuto de prorrogação acumulada.
+
+### 5.6) Tempo, automação e dados
+
+- **RF16 · Garantia.** Hora que valer ser a do servidor. Contagem regressiva na tela ser só visual: lance chegar depois do término ser recusado, mesmo se contador do navegador ainda mostrar segundo.
+- **RF17 · Garantia.** Todo leilão abrir na hora agendada e fechar no horário de término vigente, já contando prorrogação, sem ninguém mexer. Ao fechar, virar Vendido (maior lance vencer) ou Encerrado sem lances.
+- **RF18 · Garantia.** Isso continuar valendo se sistema reiniciar antes ou durante leilão: ao voltar, leilão que devia ter aberto abrir, e o que já passou do término fechar. Fechar duas vez não duplicar resultado. Nunca existir lance aceito depois do fechamento nem fechamento no meio de lance.
+- **RF19 · Garantia.** Dinheiro nunca ter erro de arredondamento. Horário ser consistente pra qualquer pessoa em qualquer fuso, e tela mostrar no fuso de quem ver.
+
+### 5.7) Listagem
+
+- **RF20 · Garantia + Decisão.** Página pública listar leilão agendado e em andamento, levar ao detalhe e à sala de cada um. Equipe decidir o que mostrar, em que ordem e como página se comportar com muito leilão.
+
+### 5.8) Publicação e entrega técnica
+
+- **RNF01 · Garantia + Decisão.** Sistema completo (front-end, back-end, banco e processo de fundo) ficar numa VM e acessível pelo navegador durante apresentação. Equipe decidir como organizar peça na VM.
+- **RNF02 · Garantia.** Todo fluxo do Núcleo poder ser feito pela interface web, sem ferramenta externa tipo Postman ou console do navegador.
+- **RNF03 · Garantia.** Ambiente poder ser recriado do zero seguindo README.
+- **RNF04 · Garantia.** Sistema poder ser populado com dado de demonstração: pelo menos 1 comitente, 3 compradores e leilão em estado diferente.
+
+## 6) Requisitos de Nível 2
+
+Só contar depois que Núcleo inteiro funcionar ponta a ponta.
+
+- **RF21 · Garantia + Decisão.** Busca achar leilão por pedaço do nome, por categoria e por estado. Filtro poder combinar. Equipe decidir como busca tratar grafia diferente e como mostrar resultado.
+- **RF22 · Garantia.** Qualquer pessoa buscar comitente pelo nome de exibição e ver perfil público: nome, data de entrada e leilão agendado, em andamento e passado. Sem avaliação, sem reputação.
+- **RF23 · Decisão.** Equipe definir o que comitente poder editar e quando poder cancelar, seguindo princípio: quanto mais perto do início e quanto mais lance, menos poder mudar, e nenhuma mudança poder prejudicar quem já deu lance.
+
+| Situação do leilão | Edição | Cancelamento |
+|---|---|---|
+| Agendado, faltando mais de 30 min | Todos os campos | Sim |
+| Agendado, faltando 30 min ou menos | Nenhuma | Sim |
+| Em andamento, sem lances | Só acrescentar texto à descrição | Sim |
+| Em andamento, com lances | Só acrescentar texto à descrição | Não |
+| Vendido, Encerrado sem lances ou Cancelado | Nenhuma | Não |
+
+- **RF24 · Garantia.** Se conexão do usuário cair, ao voltar ele reencontrar sala com estado atualizado, sem recomeçar nada.
+  *Como verificar:* derrubar rede de um navegador por alguns segundo durante disputa e religar.
+- **RF25 · Garantia.** Usuário entrar na sala só pra assistir, inclusive comitente no próprio leilão, e poder virar participante sem sair da sala. Sala mostrar quantos participante e quantos espectador ter.
+- **RF26 · Garantia.** Quem for superado por outro lance ser avisado na hora.
+- **RF27 · Garantia.** Página "Minhas participações" listar leilão onde usuário deu lance e situação dele em cada: líder, superado ou vencedor.
+- **RF28 · Garantia.** Leilão Encerrado sem lances ou Cancelado poder ser relistado, criando novo leilão pro mesmo item, com todos campo editável. Item nunca ter mais de um leilão Agendado ou Em andamento ao mesmo tempo.
+- **RF13 · Decisão.** Sistema impedir usuário de disparar rajada de lance. Regra não poder punir reenvio legítimo do RF12 nem fazer usuário diferente bloquear um ao outro. Referência: no mínimo 500 ms entre lance do mesmo usuário.
+
+## 7) Bônus
+
+Bônus só contar depois do Núcleo e de parte do Nível 2.
+
+### 7.1) Pontuação, habilitar comitente e crédito
+
+- **RF29 · Garantia.** Sistema calcular pontuação de 0 a 100 pra cada usuário. Compra = leilão vencido. Renda mensal declarada passar a ser pedida no cadastro. Renda e total comprado entrar em reais:
+
+  **pontuação = 50 · min(renda / 10.000, 1) + 20 · min(dias de conta / 180, 1) + 15 · min(compras / 10, 1) + 15 · min(total comprado / 20.000, 1)**
+
+- **RF30 · Garantia.** Com esse Bônus, anunciar deixar de ser livre. Botão "Quero vender" habilitar usuário como comitente na hora se pontuação for 50 ou mais. Se menor, mostrar a pontuação. Sem aprovação manual.
+- **RF31 · Garantia.** Limite de crédito = renda mensal × 6 × pontuação ÷ 100. Crédito disponível = limite menos soma dos lance onde usuário ser líder em leilão em andamento. Valor do lance líder ficar reservado e ser liberado quando usuário for superado ou quando leilão acabar sem ele vencer. Ao vencer, reserva ser liberada e valor entrar no histórico de compra.
+- **RF32 · Garantia.** Entrar como participante exigir crédito disponível maior ou igual ao lance mínimo atual, e todo lance exigir crédito disponível que cubra o valor. Exemplo: com R$ 6.000 de crédito, usuário assistir mas não participar de leilão com lance mínimo de R$ 200.000.
+
+Dado de demonstração passar a incluir comprador com crédito diferente e uma conta criada há muito tempo, pra testar pontuação sem esperar 180 dia.
+
+### 7.2) Nuvem e operação
+
+Cada item contar como Bônus quando funcionar no sistema publicado e for mostrado no pitch:
+
+- banco de dados gerenciado, em vez de banco instalado à mão na VM;
+- acesso por HTTPS com domínio;
+- ambiente inteiro subir com um único comando;
+- deploy automático a cada alteração;
+- mais de uma instância do back-end rodando, sem quebrar nenhuma garantia do Núcleo;
+- registro e métrica mostrando sistema funcionar durante demo;
+- teste de carga mostrando comportamento com muito lance simultâneo.
+
+## 8) Decisões da equipe
+
+Todo requisito marcado Decisão da equipe ir pro README com uma ou duas frase de justificativa. As mais importantes aparecer no pitch. Não existir resposta certa única. Contar: coerência entre escolha, problema e o que foi demonstrado.
+
+## 9) Dicas
+
+Nada aqui obrigatório. Caminho conhecido pra quem travar. Usar outro caminho também valer.
+
+- **Publique cedo.** Subir versão mínima na VM nas primeiras hora. Descobrir problema de rede ou permissão no fim do dia custar caro.
+- **Abertura e fechamento.** Processo de fundo rodar de tempos em tempos (tipo cron), ler do banco leilão cujo horário já passar e aplicar transição. Isso resolver RF17 e RF18. Timer só na memória do servidor sumir no reinício.
+- **Concorrência.** Trava no banco, fila por leilão e transação com isolamento forte ser jeito comum. Cada um ter custo diferente com mais de uma instância do back-end.
+- **Reenvio de lance.** Chave única gerada no navegador pra cada tentativa de lance deixar reconhecer o reenvio.
+- **Ordem de trabalho.** Primeiro fluxo completo funcionando, mesmo feio: criar, abrir, dar lance, fechar. Depois refinar.
+
+## 10) Entrega e apresentação
+
+Cada equipe entregar repositório com README, sistema na VM e pitch seguido de demo. Tempo de cada etapa organização avisar.
+
+- **README** trazer: endereço do sistema publicado, como recriar ambiente do zero, conta de demonstração e decisões da seção 8 com uma ou duas frase de justificativa cada.
+- **Pitch** responder: (1) qual arquitetura na VM e por que escolher; (2) quais foram duas ou três decisão mais difícil, o que considerar e o que cada escolha custar; (3) o que ficar de fora e por quê. Nas pergunta, banca escolher quem responder.
+- **Demo:** banca executar ela mesma os cenário no sistema hospedado, inclusive lance simultâneo, horário de término e reinício do sistema, e poder pedir qualquer membro conduzir. Depois, cada equipe mostrar o que mais quiser.

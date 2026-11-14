@@ -1,0 +1,110 @@
+# Stack de produção: imagens construídas (API Node + front nginx na 8080).
+# Uso: docker compose -f compose.prod.yml --env-file .env up -d --build
+# O .env de produção é gerado pelo deploy.sh (veja o README/AGENTS.md).
+name: leilao-prod
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-leilao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leilao}
+      POSTGRES_DB: ${POSTGRES_DB:-leilao}
+      TZ: UTC
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      # As fotos são servidas direto do MinIO para o navegador (S3_PUBLIC_URL).
+      - "${MINIO_API_PORT:-9000}:9000"
+    volumes:
+      - minio_data:/data
+
+  api:
+    build:
+      context: ./api
+    image: leilao-api:prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3333
+      CORS_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leilao}:${POSTGRES_PASSWORD:-leilao}@postgres:5432/${POSTGRES_DB:-leilao}?schema=public
+      REDIS_URL: redis://redis:6379
+      REDIS_ROOM_TTL_SECONDS: ${REDIS_ROOM_TTL_SECONDS:-86400}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env de produção}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-900}
+      REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-604800}
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://localhost:9000}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-auction-photos}
+      S3_FORCE_PATH_STYLE: "true"
+      AUCTION_EXTENSION_WINDOW_SECONDS: ${AUCTION_EXTENSION_WINDOW_SECONDS:-120}
+      AUCTION_EXTENSION_SECONDS: ${AUCTION_EXTENSION_SECONDS:-120}
+      AUCTION_MAX_EXTENSION_SECONDS: ${AUCTION_MAX_EXTENSION_SECONDS:-1800}
+      AUCTION_RECENT_BIDS_LIMIT: ${AUCTION_RECENT_BIDS_LIMIT:-10}
+      AUCTION_MIN_LEAD_SECONDS: ${AUCTION_MIN_LEAD_SECONDS:-60}
+      AUCTION_MAX_LEAD_SECONDS: ${AUCTION_MAX_LEAD_SECONDS:-2592000}
+      AUCTION_MIN_DURATION_SECONDS: ${AUCTION_MIN_DURATION_SECONDS:-60}
+      AUCTION_MAX_DURATION_SECONDS: ${AUCTION_MAX_DURATION_SECONDS:-604800}
+      AUCTION_EDIT_LOCK_SECONDS: ${AUCTION_EDIT_LOCK_SECONDS:-1800}
+      AUCTION_TICK_MS: ${AUCTION_TICK_MS:-1000}
+      AUCTION_MAX_ITEMS: ${AUCTION_MAX_ITEMS:-10}
+      ITEM_MIN_PHOTOS: ${ITEM_MIN_PHOTOS:-3}
+      ITEM_MAX_PHOTOS: ${ITEM_MAX_PHOTOS:-10}
+      PHOTO_MAX_BYTES: ${PHOTO_MAX_BYTES:-5242880}
+      PRISMA_HIDE_UPDATE_MESSAGE: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  app:
+    build:
+      context: ./app
+      args:
+        # Mesmo host da API: o nginx da 8080 faz proxy de /user, /auth, /item, /auction e /socket.io.
+        VITE_API_URL: ${PUBLIC_URL:-http://localhost:8080}
+        VITE_PENDING_FALLBACK: ${VITE_PENDING_FALLBACK:-true}
+    image: leilao-app:prod
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

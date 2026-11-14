@@ -65,6 +65,18 @@ Scripts da API: `npm run dev`, `npm run typecheck`, `npm run db:migrate`, `npm r
 Para a demo, use leilões curtos: no `api/.env`, `AUCTION_MIN_LEAD_SECONDS=60` e
 `AUCTION_MIN_DURATION_SECONDS=180` (já são os defaults ou próximos disso).
 
+### Deploy (produção)
+
+- Workflow `.github/workflows/deploy.yml` roda a cada push na `main` (e manualmente). Entra por SSH
+  no servidor usando `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_PORT`, `DEPLOY_PATH` e
+  `PUBLIC_URL` (secrets) e executa `bash deploy.sh`.
+- `deploy.sh` atualiza o repo por `git fetch`/`reset --hard` (remote via SSH), cria/completa o `.env`
+  de produção e roda `docker compose -f compose.prod.yml up -d --build`.
+- `compose.prod.yml` é independente do `compose.yml` (dev): builda `api/Dockerfile` (Node + migrations
+  no start) e `app/Dockerfile` (build Vite → nginx na **8080**). O nginx serve a SPA e faz proxy de
+  `/user`, `/auth`, `/item`, `/auction` e `/socket.io` para a API; o front é buildado com
+  `VITE_API_URL=PUBLIC_URL` (mesma origem). MinIO publica a porta 9000 para as fotos.
+
 ---
 
 ## 3. Modelo de dados (Prisma — `api/src/prisma/schema.prisma`)
@@ -266,8 +278,9 @@ ack do `auction:join`: `{ ok, serverTime, snapshot: { auction, bids: Bid[] (últ
 - [x] Serviço `app` no `compose.yml` (Vite dev em http://localhost:5173, porta via `APP_PORT`).
 
 ### Infra / entrega
-- [ ] `.env` de produção, segredos, deploy (VM + bucket na nuvem; `S3_PUBLIC_URL` público).
-- [ ] README raiz com instruções (hoje só tem o título).
+- [x] `.env` de produção, segredos e deploy automático (GitHub Actions + `deploy.sh` + `compose.prod.yml`).
+- [ ] Bucket/MinIO na nuvem e TLS (hoje `S3_PUBLIC_URL` aponta para o MinIO publicado na 9000).
+- [x] README raiz com instruções de dev e deploy.
 
 ---
 

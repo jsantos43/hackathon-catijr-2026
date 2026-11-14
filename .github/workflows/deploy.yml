@@ -1,0 +1,31 @@
+name: Deploy produção
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy no servidor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Executar deploy.sh via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          command_timeout: 30m
+          script_stop: true
+          envs: PUBLIC_URL
+          script: |
+            cd "${{ secrets.DEPLOY_PATH }}"
+            bash deploy.sh
+        env:
+          PUBLIC_URL: ${{ secrets.PUBLIC_URL }}
