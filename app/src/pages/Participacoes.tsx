@@ -51,7 +51,7 @@ export default function Participacoes() {
         <div className="empty">
           <span style={{ fontWeight: 600, fontSize: 18 }}>Você ainda não participou de nenhum leilão</span>
           <span className="small muted">Entre numa sala ao vivo e dê seu primeiro lance.</span>
-          <Link to="/?estado=live" className="btn btn-primary">
+          <Link to="/" className="btn btn-primary">
             Ver leilões ao vivo
           </Link>
         </div>

@@ -1,7 +1,7 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Info, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Crown, Eye, Info, Trophy, Users, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Avatar, ErrorState, Gallery, Logo, PageLoader, StatusBadge } from '../components/ui';
+import { Avatar, ErrorState, Logo, PageLoader, Photo, StatusBadge } from '../components/ui';
 import { LIMITS } from '../config';
 import { useAuth } from '../contexts/AuthContext';
 import { useNow } from '../hooks/useNow';
@@ -36,6 +36,16 @@ import {
 import type { Auction, Bid } from '../types';
 
 type Conn = 'connecting' | 'ok' | 'retry' | 'off';
+
+/** Quantos lances a sala carrega pela API (o snapshot do join traz só os 20 últimos). */
+const BIDS_LIMIT = 100;
+
+/** Junta listas de lances sem repetir (o mesmo lance pode vir do snapshot, da API e do socket). */
+const mergeBids = (a: Bid[], b: Bid[]) => {
+  const byId = new Map<string, Bid>();
+  [...a, ...b].forEach((x) => byId.set(x.id, x));
+  return [...byId.values()];
+};
 type Toast = { kind: 'ok' | 'out' | 'ext'; title: string; text: string };
 
 const REJECT_TEXT: Record<string, string> = {
@@ -77,15 +87,10 @@ export default function Sala() {
 
   const refresh = useCallback(async () => {
     try {
-      const [a, b] = await Promise.all([auctionService.get(id), bidService.list(id)]);
+      const [a, b] = await Promise.all([auctionService.get(id), bidService.list(id, BIDS_LIMIT)]);
       setAuction(a);
-      setBids((prev) => {
-        // Mantém lances recebidos pelo socket que ainda não vieram na resposta.
-        const ids = new Set(b.map((x) => x.id));
-        return [...b, ...prev.filter((x) => !ids.has(x.id))].sort(
-          (x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt),
-        );
-      });
+      // Mantém lances recebidos pelo socket que ainda não vieram na resposta.
+      setBids((prev) => mergeBids(prev, b));
       setLoadError(null);
     } catch (err) {
       setLoadError(errorMessage(err));
@@ -142,9 +147,14 @@ export default function Sala() {
         const ack = await joinAuction(s, id, roleRef.current);
         if (ack.ok) {
           setAuction(ack.snapshot.auction);
-          setBids(ack.snapshot.bids);
+          setBids((prev) => mergeBids(prev, ack.snapshot.bids));
           setPresence(ack.snapshot.presence);
           setLoadError(null);
+          // O snapshot traz só os últimos 20; completa o ranking pela API.
+          bidService
+            .list(id, BIDS_LIMIT)
+            .then((b) => setBids((prev) => mergeBids(prev, b)))
+            .catch(() => undefined);
         } else if (ack.error === 'NOT_FOUND') {
           setLoadError('Leilão não encontrado.');
         } else {
@@ -301,7 +311,6 @@ export default function Sala() {
     );
 
   const cover = auction.items[0];
-  const images = auction.items.flatMap((i) => i.images);
   const urgent = running && remaining < LIMITS.EXTENSION_WINDOW_MS && remaining > 0;
   const extendedMs = Date.parse(auction.endsAt) - Date.parse(auction.originalEndsAt);
   const offline = conn !== 'ok';
@@ -319,6 +328,40 @@ export default function Sala() {
   else if (timeUp) btnText = 'Aguardando servidor';
 
   const stateLabel = running ? 'Ao vivo' : undefined;
+  const ended = status === 'SOLD' || status === 'ENDED_NO_BIDS' || status === 'CANCELLED';
+
+  // Relógio em destaque: o que falta para abrir (agendado) ou para fechar (ao vivo).
+  const totalMs = Math.max(1, endsAtMs - startsAtMs);
+  const timeLeftPct = running ? Math.min(100, Math.max(0, (remaining / totalMs) * 100)) : status === 'SCHEDULED' ? 100 : 0;
+  const timer = running
+    ? {
+        label: urgent ? 'Últimos minutos' : 'Tempo restante',
+        digits: timeUp ? '00:00' : countdown(remaining),
+        sub: timeUp
+          ? 'Aguardando o servidor encerrar…'
+          : `Termina às ${hhmm(auction.endsAt)} (seu horário)${urgent ? ' · lances agora prorrogam' : ''}`,
+      }
+    : status === 'SCHEDULED'
+      ? {
+          label: 'Abre em',
+          digits: now >= startsAtMs ? 'Abrindo…' : countdown(startsAtMs - now),
+          sub: `Às ${hhmm(auction.startsAt)} (seu horário)`,
+        }
+      : { label: 'Encerrado', digits: '00:00', sub: `Terminou às ${hhmm(auction.endsAt)}` };
+
+  const priceLabel =
+    status === 'SOLD' ? 'Valor final' : auction.bidCount > 0 ? 'Valor atual' : 'Preço inicial';
+  const priceValue = status === 'SOLD' ? auction.finalPriceCents : price;
+  let leaderLine = 'Ainda sem lances · o primeiro pode ser igual ao preço inicial';
+  if (status === 'SOLD') leaderLine = auction.winnerId === user?.id ? 'Arrematado por você' : `Arrematado por ${leaderName}`;
+  else if (status === 'ENDED_NO_BIDS') leaderLine = 'Ninguém deu lance';
+  else if (status === 'CANCELLED') leaderLine = 'Leilão cancelado';
+  else if (auction.bidCount > 0) leaderLine = youLead ? 'Você está na frente' : `Na frente: ${leaderName}`;
+
+  // Ranking: do maior para o menor lance (empate: quem chegou primeiro).
+  const ranking = [...bids].sort(
+    (x, y) => y.amountCents - x.amountCents || Date.parse(x.createdAt) - Date.parse(y.createdAt),
+  );
 
   return (
     <>
@@ -357,51 +400,116 @@ export default function Sala() {
       )}
 
       <main className="page">
-        <div className="two-col">
-          <section className="main">
-            <Gallery images={images} alt={auction.title} badge={<StatusBadge status={auction.status} text={stateLabel} />} />
-            <div className="stack">
+        {/* Identificação do leilão */}
+        <div className="room-item">
+          <span className="room-thumb">
+            <Photo src={cover?.images[0]} alt="" />
+          </span>
+          <div className="stack" style={{ gap: 4, minWidth: 0, flex: 1 }}>
+            <div className="row wrap" style={{ gap: 8 }}>
+              <StatusBadge status={auction.status} text={stateLabel} />
               {cover && <span className="eyebrow">{CATEGORY_LABEL[cover.category]}</span>}
-              <h1 style={{ fontSize: 30, lineHeight: '36px' }}>{auction.title}</h1>
-              <span className="muted">
-                Anunciado por <Link to={`/comitentes/${auction.owner.id}`}>{isOwner ? 'você' : auction.owner.name}</Link> ·
-                preço inicial {money(auction.startingPriceCents)} ·{' '}
-                <Link to={`/leiloes/${auction.id}`}>ver descrição completa</Link>
-              </span>
             </div>
+            <h1 className="room-title">{auction.title}</h1>
+            <span className="small muted">
+              Anunciado por <Link to={`/comitentes/${auction.owner.id}`}>{isOwner ? 'você' : auction.owner.name}</Link> ·
+              preço inicial {money(auction.startingPriceCents)} ·{' '}
+              <Link to={`/leiloes/${auction.id}`}>fotos e descrição</Link>
+            </span>
+          </div>
+        </div>
 
-            <div className="panel" style={{ gap: 4 }}>
-              <div className="row between" style={{ marginBottom: 8 }}>
-                <h2 style={{ fontSize: 20 }}>Últimos lances</h2>
-                <span className="small muted">{plural(auction.bidCount, 'lance no total', 'lances no total')}</span>
-              </div>
-              {bids.length === 0 && (
-                <span className="muted small" style={{ padding: '8px 0' }}>
-                  {auction.bidCount === 0
-                    ? 'Nenhum lance foi dado neste leilão.'
-                    : 'Os próximos lances aparecem aqui em tempo real.'}
+        {/* Destaque: tempo e valor atual */}
+        <section
+          className={`room-hero ${urgent ? 'urgent' : ''} ${ended ? 'ended' : ''} ${status === 'SCHEDULED' ? 'scheduled' : ''}`}
+          aria-label="Tempo e valor atual"
+        >
+          <div className="room-timer">
+            <span className="room-label">
+              <Clock size={16} aria-hidden /> {timer.label}
+            </span>
+            <span className="room-digits" aria-live="off">
+              {timer.digits}
+            </span>
+            <div className="room-progress" aria-hidden>
+              <div style={{ width: `${timeLeftPct}%` }} />
+            </div>
+            <span className="room-sub">
+              {timer.sub}
+              {running && extendedMs > 0 && (
+                <span className="room-ext"> · prorrogado +{Math.round(extendedMs / 60000)} de 30 min</span>
+              )}
+            </span>
+          </div>
+
+          <div className="room-price">
+            <span className="room-label">{priceLabel}</span>
+            <span className="room-value" aria-live="polite">
+              {money(priceValue)}
+            </span>
+            <span className={`room-leader ${youLead || (status === 'SOLD' && auction.winnerId === user?.id) ? 'me' : ''}`}>
+              {auction.bidCount > 0 && <Crown size={16} aria-hidden />}
+              {leaderLine}
+            </span>
+            <div className="room-meta">
+              <span>{plural(auction.bidCount, 'lance', 'lances')}</span>
+              {(running || status === 'SCHEDULED') && <span>Mínimo {money(min)}</span>}
+              {presence && (
+                <span title="Participantes · espectadores">
+                  <Users size={14} aria-hidden /> {presence.participants} · <Eye size={14} aria-hidden /> {presence.spectators}
                 </span>
               )}
-              <div aria-live="polite">
-                {bids.slice(0, 8).map((b, i) => {
-                  const mine = b.bidderId === user?.id;
-                  return (
-                    <div key={b.id} className={`bid-row ${i === 0 ? 'top' : ''}`}>
-                      <Avatar id={b.bidderId} name={b.bidderName} self={mine} size={36} />
-                      <div className="stack" style={{ gap: 0 }}>
-                        <span style={{ fontWeight: mine ? 700 : 500 }}>{mine ? 'Você' : shortName(b.bidderName)}</span>
-                        <span className="small muted num">{clockTime(b.createdAt)}</span>
-                      </div>
-                      {i === 0 && <span className="badge badge-leader">Maior lance</span>}
-                      <span className="amt">{money(b.amountCents)}</span>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
+          </div>
+        </section>
+
+        <div className="two-col room-cols">
+          {/* Ranking de lances */}
+          <section className="main panel" style={{ gap: 4 }} aria-labelledby="sala-ranking">
+            <div className="row between" style={{ marginBottom: 8 }}>
+              <h2 id="sala-ranking" style={{ fontSize: 20 }}>
+                Lances
+              </h2>
+              <span className="small muted">Do maior para o menor</span>
+            </div>
+            {ranking.length === 0 && (
+              <div className="room-empty">
+                <Trophy size={28} aria-hidden />
+                <span style={{ fontWeight: 600 }}>
+                  {auction.bidCount === 0 ? 'Nenhum lance ainda' : 'Carregando lances…'}
+                </span>
+                <span className="small muted">
+                  {running ? 'Os lances aparecem aqui em tempo real.' : status === 'SCHEDULED' ? 'A disputa começa quando a sala abrir.' : ''}
+                </span>
+              </div>
+            )}
+            <ol className="ranking" aria-live="polite">
+              {ranking.map((b, i) => {
+                const mine = b.bidderId === user?.id;
+                return (
+                  <li key={b.id} className={`rank-row ${i === 0 ? 'top' : ''} ${mine ? 'mine' : ''}`}>
+                    <span className="rank-pos">{i + 1}º</span>
+                    <Avatar id={b.bidderId} name={b.bidderName} self={mine} size={36} />
+                    <div className="stack" style={{ gap: 0, minWidth: 0 }}>
+                      <span className="rank-name">{mine ? 'Você' : shortName(b.bidderName)}</span>
+                      <span className="small muted num">{clockTime(b.createdAt)}</span>
+                    </div>
+                    {i === 0 && (
+                      <span className="badge badge-leader">{status === 'SOLD' ? 'Vencedor' : 'Maior lance'}</span>
+                    )}
+                    <span className="rank-amt">{money(b.amountCents)}</span>
+                  </li>
+                );
+              })}
+            </ol>
+            {auction.bidCount > ranking.length && ranking.length > 0 && (
+              <span className="small muted" style={{ paddingTop: 8 }}>
+                Mostrando os {ranking.length} maiores de {auction.bidCount} lances.
+              </span>
+            )}
           </section>
 
-          <aside className="side" aria-label="Painel do leilão">
+          <aside className="side" aria-label="Painel do lance">
             {toast && (
               <div
                 className={`alert ${toast.kind === 'ok' ? 'alert-success' : toast.kind === 'out' ? 'alert-live' : 'alert-warn'}`}
@@ -419,76 +527,6 @@ export default function Sala() {
             )}
 
             <div className="panel">
-              <div className="row between wrap">
-                <StatusBadge status={auction.status} text={stateLabel} />
-                {presence && (
-                  <span className="small muted">
-                    {plural(presence.participants, 'participante', 'participantes')} ·{' '}
-                    {plural(presence.spectators, 'espectador', 'espectadores')}
-                  </span>
-                )}
-              </div>
-
-              {running && (
-                <div className={`clock ${urgent ? 'urgent' : ''}`}>
-                  <div className="stack" style={{ gap: 0 }}>
-                    <span className="small" style={{ fontWeight: 600 }}>
-                      {urgent ? 'Últimos minutos' : 'Termina em'}
-                    </span>
-                    <span className="small">
-                      {urgent ? 'Lances agora prorrogam o término' : `às ${hhmm(auction.endsAt)} (seu horário)`}
-                    </span>
-                  </div>
-                  <span className="digits" aria-live="off">
-                    {timeUp ? 'Aguardando servidor' : countdown(remaining)}
-                  </span>
-                </div>
-              )}
-
-              {auction.status === 'SCHEDULED' && (
-                <div className="clock">
-                  <div className="stack" style={{ gap: 0 }}>
-                    <span className="small" style={{ fontWeight: 600 }}>
-                      A sala abre em
-                    </span>
-                    <span className="small">às {hhmm(auction.startsAt)} (seu horário)</span>
-                  </div>
-                  <span className="digits">{now >= startsAtMs ? 'Abrindo…' : countdown(startsAtMs - now)}</span>
-                </div>
-              )}
-
-              {running && extendedMs > 0 && (
-                <div className="alert alert-warn">
-                  <Clock size={18} aria-hidden />
-                  <span>
-                    <b>Prorrogado.</b> Lance nos minutos finais. Prorrogação acumulada: {Math.round(extendedMs / 60000)}{' '}
-                    de 30 min.
-                  </span>
-                </div>
-              )}
-
-              <div className="stack" style={{ gap: 2 }}>
-                <span className="small muted">
-                  {running ? 'Preço atual' : auction.status === 'SOLD' ? 'Valor final' : 'Preço inicial'}
-                </span>
-                <span className="big-price">{money(auction.status === 'SOLD' ? auction.finalPriceCents : price)}</span>
-              </div>
-
-              <dl className="dl">
-                <div>
-                  <dt>Lance mínimo</dt>
-                  <dd>{running || auction.status === 'SCHEDULED' ? money(min) : '—'}</dd>
-                </div>
-                <div>
-                  <dt>Líder</dt>
-                  <dd style={{ color: youLead ? 'var(--win)' : undefined }}>{leaderName}</dd>
-                </div>
-                <div>
-                  <dt>Lances</dt>
-                  <dd>{auction.bidCount}</dd>
-                </div>
-              </dl>
-
               {msg && running && !isOwner && role === 'participant' && (
                 <div className="alert alert-danger" role="alert">
                   <AlertTriangle size={18} aria-hidden />
@@ -496,6 +534,15 @@ export default function Sala() {
                     <span className="title">Lance recusado</span>
                     <span>{msg}</span>
                   </div>
+                </div>
+              )}
+
+              {status === 'SCHEDULED' && (
+                <div className="stack" style={{ gap: 6 }}>
+                  <span style={{ fontWeight: 700 }}>A sala ainda não abriu</span>
+                  <span className="small muted">
+                    Os lances começam às {hhmm(auction.startsAt)}. Fique nesta página: ela abre sozinha.
+                  </span>
                 </div>
               )}
 
@@ -511,10 +558,13 @@ export default function Sala() {
 
               {running && !isOwner && role === 'participant' && (
                 <form className="stack" style={{ gap: 12 }} onSubmit={handleBid}>
-                  <label htmlFor="sala-valor" className="label">
-                    Seu lance
-                  </label>
-                  <div className="money-input" style={{ height: 52, borderColor: msg ? 'var(--danger)' : 'var(--primary)' }}>
+                  <div className="row between">
+                    <label htmlFor="sala-valor" className="label">
+                      Seu lance
+                    </label>
+                    <span className="small muted">Mínimo {money(min)}</span>
+                  </div>
+                  <div className="money-input" style={{ height: 56, borderColor: msg ? 'var(--danger)' : 'var(--primary)' }}>
                     <span>R$</span>
                     <input
                       id="sala-valor"
@@ -523,7 +573,7 @@ export default function Sala() {
                       autoComplete="off"
                       value={amount}
                       disabled={youLead}
-                      style={{ fontSize: 20, fontWeight: 700 }}
+                      style={{ fontSize: 22, fontWeight: 700 }}
                       onChange={(e) => {
                         setAmount(e.target.value);
                         setMsg(null);
@@ -572,7 +622,7 @@ export default function Sala() {
                 </div>
               )}
 
-              {auction.status === 'SOLD' &&
+              {status === 'SOLD' &&
                 (auction.winnerId === user?.id ? (
                   <div className="result-card" style={{ background: 'var(--win)', color: '#fff' }}>
                     <span className="small" style={{ fontWeight: 700, opacity: 0.85 }}>
@@ -592,7 +642,7 @@ export default function Sala() {
                     </span>
                   </div>
                 ))}
-              {auction.status === 'ENDED_NO_BIDS' && (
+              {status === 'ENDED_NO_BIDS' && (
                 <div className="result-card" style={{ background: 'var(--muted-bg)' }}>
                   <span className="small muted" style={{ fontWeight: 700 }}>
                     Resultado
@@ -601,7 +651,7 @@ export default function Sala() {
                   <span className="muted">Ninguém deu lance até o fim. O comitente pode relistar o item.</span>
                 </div>
               )}
-              {auction.status === 'CANCELLED' && (
+              {status === 'CANCELLED' && (
                 <div className="result-card" style={{ border: '1px dashed var(--line-strong)' }}>
                   <span className="title">Leilão cancelado</span>
                   <span className="muted">Este leilão foi cancelado e não aceita mais lances.</span>

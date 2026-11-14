@@ -156,7 +156,58 @@ const paginateByPrice = async (
   return { auctions: auctions.map(serializeAuction), page, pageSize, total: rows.length };
 };
 
-const SORT_ORDER: Record<Exclude<AuctionSort, 'price'>, Prisma.AuctionOrderByWithRelationInput[]> = {
+/**
+ * Ordem "ao vivo primeiro": Em andamento (termina primeiro), depois Agendados (começa primeiro)
+ * e, se pedidos, os encerrados (mais recentes primeiro). Cada grupo usa seu próprio índice;
+ * a página é recortada somando os grupos em sequência.
+ */
+const LIVE_GROUPS: { status: AuctionStatus[]; orderBy: Prisma.AuctionOrderByWithRelationInput[] }[] = [
+  { status: [AuctionStatus.RUNNING], orderBy: [{ endsAt: 'asc' }, { id: 'asc' }] },
+  { status: [AuctionStatus.SCHEDULED], orderBy: [{ startsAt: 'asc' }, { id: 'asc' }] },
+  {
+    status: [AuctionStatus.SOLD, AuctionStatus.ENDED_NO_BIDS, AuctionStatus.CANCELLED],
+    orderBy: [{ endsAt: 'desc' }, { id: 'asc' }],
+  },
+];
+
+const paginateLiveFirst = async (
+  where: Prisma.AuctionWhereInput,
+  statuses: AuctionStatus[],
+  { page, pageSize }: { page: number; pageSize: number },
+) => {
+  const groups = LIVE_GROUPS.map((g) => ({
+    ...g,
+    where: { ...where, status: { in: g.status.filter((s) => statuses.includes(s)) } },
+  })).filter((g) => g.where.status.in.length > 0);
+
+  const counts = await db.$transaction(groups.map((g) => db.auction.count({ where: g.where })));
+  const total = counts.reduce((a, b) => a + b, 0);
+
+  let skip = (page - 1) * pageSize;
+  let take = pageSize;
+  const rows: AuctionRow[] = [];
+  for (const [i, g] of groups.entries()) {
+    if (take === 0) break;
+    if (skip >= counts[i]) {
+      skip -= counts[i];
+      continue;
+    }
+    const found = await db.auction.findMany({
+      where: g.where,
+      select: auctionSelect,
+      orderBy: g.orderBy,
+      skip,
+      take,
+    });
+    rows.push(...found);
+    take -= found.length;
+    skip = 0;
+  }
+
+  return { auctions: rows.map(serializeAuction), page, pageSize, total };
+};
+
+const SORT_ORDER: Record<Exclude<AuctionSort, 'price' | 'live'>, Prisma.AuctionOrderByWithRelationInput[]> = {
   ends: [{ endsAt: 'asc' }, { id: 'asc' }],
   starts: [{ startsAt: 'asc' }, { id: 'asc' }],
   bids: [{ bidCount: 'desc' }, { endsAt: 'asc' }, { id: 'asc' }],
@@ -164,7 +215,8 @@ const SORT_ORDER: Record<Exclude<AuctionSort, 'price'>, Prisma.AuctionOrderByWit
 
 class Auction {
   /**
-   * RF20/RF21: listagem pública. `sort`: ends (termina primeiro, padrão), starts, price, bids.
+   * RF20/RF21: listagem pública. `sort`: live (em andamento e depois agendados), ends (termina
+   * primeiro, padrão), starts, price, bids.
    * Sem `sort`, se a lista incluir encerrados, os mais recentes vêm primeiro.
    */
   static async list(query: ListAuctionsQuery) {
@@ -174,6 +226,7 @@ class Auction {
     };
 
     if (query.sort === 'price') return paginateByPrice(where, query);
+    if (query.sort === 'live') return paginateLiveFirst(where, query.status, query);
     if (query.sort) return paginate(where, query, SORT_ORDER[query.sort]);
 
     const onlyOpen = query.status.every((s) => OPEN_STATUSES.includes(s));

@@ -93,6 +93,30 @@ describe('GET /auction/all', () => {
     expect(res.body.auctions[0].title).toBe('Com lance');
   });
 
+  it('com ?sort=live mostra Em andamento (termina primeiro) e depois Agendados (começa primeiro)', async () => {
+    const owner = await createUser();
+    const at = (min: number) => new Date(Date.now() + min * 60_000);
+    await createAuction(owner.id, { status: AuctionStatus.SCHEDULED, title: 'Agendado tarde', startsAt: at(90), endsAt: at(100) });
+    await createAuction(owner.id, { status: AuctionStatus.SCHEDULED, title: 'Agendado cedo', startsAt: at(30), endsAt: at(500) });
+    await createRunningAuction(owner.id, { title: 'Ao vivo longo', endsAt: at(50) });
+    await createRunningAuction(owner.id, { title: 'Ao vivo curto', endsAt: at(5) });
+
+    const all = await request(app).get('/auction/all?sort=live').expect(200);
+    expect(all.body.auctions.map((a: { title: string }) => a.title)).toEqual([
+      'Ao vivo curto',
+      'Ao vivo longo',
+      'Agendado cedo',
+      'Agendado tarde',
+    ]);
+
+    // A página atravessa a fronteira entre os grupos.
+    const page2 = await request(app).get('/auction/all?sort=live&pageSize=3&page=2').expect(200);
+    expect(page2.body.total).toBe(4);
+    expect(page2.body.auctions.map((a: { title: string }) => a.title)).toEqual(['Agendado tarde']);
+    const mid = await request(app).get('/auction/all?sort=live&pageSize=1&page=2').expect(200);
+    expect(mid.body.auctions[0].title).toBe('Ao vivo longo');
+  });
+
   it('recusa sort desconhecido', async () => {
     await request(app).get('/auction/all?sort=nome').expect(400);
   });

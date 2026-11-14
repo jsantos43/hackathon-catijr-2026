@@ -145,7 +145,7 @@ Login e cadastro têm rate limit por IP no Redis (`AUTH_RATE_LIMIT_MAX` por `AUT
 ### Leilões
 | Método | Rota | Acesso | Notas |
 |---|---|---|---|
-| GET | `/auction/all` | público | `?q=&category=A,B&status=RUNNING,SCHEDULED&ownerId=&sort=ends\|starts\|price\|bids&page=&pageSize=` (padrão: abertos, ordenado por término) |
+| GET | `/auction/all` | público | `?q=&category=A,B&status=RUNNING,SCHEDULED&ownerId=&sort=live\|ends\|starts\|price\|bids&page=&pageSize=` (padrão: abertos, ordenado por término; `live` = Em andamento por término e depois Agendados por início) |
 | GET | `/auction/participations` | login | onde dei lance: `{ auction, myHighestBidCents, situation: LEADING\|OUTBID\|WON\|LOST }[]` |
 | GET | `/auction/:id/bids` | público | `?limit=20`, mais recente primeiro, `bidderName` já abreviado ("Marina T.") |
 | GET | `/auction/my` | login | os que eu criei |
@@ -189,10 +189,12 @@ Implementado a partir de `design/DESIGN.md` + `design/telas/*.html` + `design/to
 | Rota | Página | Acesso | API usada |
 |---|---|---|---|
 | `/entrar` (`?modo=cadastro&next=`) | `pages/Login.tsx` | público | `POST /user`, `POST /auth/login` |
-| `/` | `pages/Listagem.tsx` | público | `GET /auction/all` (busca, estado, categoria, `sort` no servidor, “carregar mais”) |
+| `/` | `pages/Listagem.tsx` | público | `GET /auction/all` (sempre abertos, `sort=live` por padrão; busca grande com categorias múltiplas embutidas em `components/CategoryPicker`, `?categoria=A,B`; “carregar mais”) |
 | `/leiloes/:id` | `pages/Detalhe.tsx` | público | `GET /auction/:id` |
-| `/leiloes/:id/sala` | `pages/Sala.tsx` | login | Socket.IO (snapshot no join, `auction:bid`, presença) + `GET /auction/:id`, `GET /auction/:id/bids` ao reconectar |
-| `/anunciar` (`?relistar=:id`) | `pages/Criar.tsx` | login | `GET /item`, `POST /item`, `POST /auction` |
+| `/leiloes/:id/sala` | `pages/Sala.tsx` | login | Socket.IO (snapshot no join, `auction:bid`, presença) + `GET /auction/:id`, `GET /auction/:id/bids?limit=100` (completa o ranking) — destaque de tempo/valor atual e ranking do maior para o menor lance |
+| `/anunciar` | `pages/Inventario.tsx` | login | `GET /item` — passo 1: inventário; escolhe item(ns) ou vai cadastrar um novo |
+| `/anunciar/novo-item` | `pages/NovoItem.tsx` | login | `POST /item` — cadastra e segue para o leilão com ele |
+| `/anunciar/leilao?itens=a,b` (`?relistar=:id`) | `pages/Criar.tsx` | login | `GET /item`, `POST /auction` — passo 2: dados do leilão |
 | `/meus-leiloes` | `pages/MeusLeiloes.tsx` | login | `GET /auction/my`, `PUT`/`DELETE /auction/:id` |
 | `/participacoes` | `pages/Participacoes.tsx` | login | `GET /auction/participations` |
 | `/comitentes/:id` | `pages/Perfil.tsx` | público | `GET /user/:id`, `GET /auction/all?ownerId=` |
@@ -277,7 +279,7 @@ encerrar sem lances e cancelar.
 - [x] `GET /auction/:id/bids` e `GET /auction/participations`.
 - [x] Nome do líder/vencedor (`winner`) nas respostas de leilão.
 - [x] Presença (`auction:role` / `auction:presence`).
-- [x] Ordenação no servidor (`?sort=ends|starts|price|bids`).
+- [x] Ordenação no servidor (`?sort=live|ends|starts|price|bids`).
 - [x] Rate limit HTTP no login/cadastro.
 - [x] Testes (lifecycle, regra de queda, lances concorrentes, idempotência, prorrogação, socket ponta a ponta).
 - [x] Middlewares em classes (`Auth.require`, `Validate.body/query/params`, `Upload.images`, `RateLimit.byIp`, `ErrorHandler`).

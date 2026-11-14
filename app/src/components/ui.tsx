@@ -1,4 +1,4 @@
-import { Gavel, ImageIcon, X } from 'lucide-react';
+import { AlertCircle, Check, Gavel, ImageIcon, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { avatarColor, initials, STATUS_LABEL } from '../lib/format';
@@ -158,3 +158,12 @@ export function Dialog({
   );
 }
 
+/** Linha de checklist "antes de publicar": ok (verde) ou pendente. */
+export function Check3({ ok, text }: { ok: boolean; text: string }) {
+  return (
+    <span className={ok ? 'ok' : 'pending'}>
+      {ok ? <Check size={18} strokeWidth={2.4} aria-hidden /> : <AlertCircle size={18} aria-hidden />}
+      {text}
+    </span>
+  );
+}
