@@ -158,6 +158,3 @@ export function Dialog({
   );
 }
 
-export function PendingNote({ children = 'Rota pendente na API · resposta genérica' }: { children?: ReactNode }) {
-  return <span className="pending-note">{children}</span>;
-}

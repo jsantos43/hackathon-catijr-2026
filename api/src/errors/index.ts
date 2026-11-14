@@ -4,7 +4,18 @@ import Forbidden from './Forbidden.js';
 import Internal from './Internal.js';
 import InvalidRequest from './InvalidRequest.js';
 import NotFound from './NotFound.js';
+import TooManyRequests from './TooManyRequests.js';
 import Unauthorized from './Unauthorized.js';
 import Unprocessable from './Unprocessable.js';
 
-export { Base, Conflict, Forbidden, Internal, InvalidRequest, NotFound, Unauthorized, Unprocessable };
+export {
+  Base,
+  Conflict,
+  Forbidden,
+  Internal,
+  InvalidRequest,
+  NotFound,
+  TooManyRequests,
+  Unauthorized,
+  Unprocessable,
+};

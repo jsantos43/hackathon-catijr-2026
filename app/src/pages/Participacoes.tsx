@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
-import { ErrorState, PendingNote, Photo, Spinner, StatusBadge } from '../components/ui';
+import { ErrorState, Photo, Spinner, StatusBadge } from '../components/ui';
 import { useAsync } from '../hooks/useAsync';
 import { money, relativeDay } from '../lib/format';
-import { pendingService } from '../services/pending';
+import { bidService } from '../services/bidService';
 import type { ParticipationSituation } from '../types';
 
 const SITUATION: Record<ParticipationSituation, { label: string; cls: string }> = {
@@ -13,8 +13,8 @@ const SITUATION: Record<ParticipationSituation, { label: string; cls: string }> 
 };
 
 export default function Participacoes() {
-  const { data, error, loading, reload } = useAsync(() => pendingService.participations(), []);
-  const list = data?.list ?? [];
+  const { data, error, loading, reload } = useAsync(() => bidService.participations(), []);
+  const list = data ?? [];
   const count = (s: ParticipationSituation) => list.filter((p) => p.situation === s).length;
 
   return (
@@ -22,11 +22,6 @@ export default function Participacoes() {
       <div className="stack">
         <h1 className="page-title">Minhas participações</h1>
         <span className="muted">Leilões em que você deu lances e como você está em cada um.</span>
-        {data?.generic && (
-          <PendingNote>
-            GET /auction/participations ainda não existe na API · mostrando só os leilões que você venceu
-          </PendingNote>
-        )}
       </div>
 
       <dl className="dl">

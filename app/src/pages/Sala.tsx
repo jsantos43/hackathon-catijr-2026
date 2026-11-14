@@ -20,10 +20,9 @@ import {
   shortName,
   uuid,
 } from '../lib/format';
-import { serverNow } from '../lib/serverClock';
 import { errorMessage } from '../services/api';
 import { auctionService } from '../services/auctionService';
-import { pendingService } from '../services/pending';
+import { bidService } from '../services/bidService';
 import {
   getSocket,
   joinAuction,
@@ -31,6 +30,7 @@ import {
   setRole,
   type BidEvent,
   type PresenceEvent,
+  type Role,
   type StatusEvent,
 } from '../services/socket';
 import type { Auction, Bid } from '../types';
@@ -45,6 +45,7 @@ const REJECT_TEXT: Record<string, string> = {
   ALREADY_LEADER: 'Você já é o líder deste leilão.',
   RATE_LIMITED: 'Aguarde um instante entre um lance e outro.',
   UNAUTHORIZED: 'Sua sessão expirou. Entre de novo para dar lances.',
+  NOT_IN_ROOM: 'Você saiu da sala. Aguarde a reconexão.',
   DISCONNECTED: 'Sem conexão com a sala.',
 };
 
@@ -58,7 +59,7 @@ export default function Sala() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [conn, setConn] = useState<Conn>('connecting');
   const [presence, setPresence] = useState<PresenceEvent | null>(null);
-  const [role, setRoleState] = useState<'participant' | 'spectator'>('participant');
+  const [role, setRoleState] = useState<Role>('participant');
   const [amount, setAmount] = useState('');
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -67,17 +68,19 @@ export default function Sala() {
   // Refs para os handlers do socket enxergarem o estado atual.
   const auctionRef = useRef<Auction | null>(null);
   const userRef = useRef(user);
+  const roleRef = useRef<Role>(role);
   useLayoutEffect(() => {
     auctionRef.current = auction;
     userRef.current = user;
-  }, [auction, user]);
+    roleRef.current = role;
+  }, [auction, user, role]);
 
   const refresh = useCallback(async () => {
     try {
-      const [a, b] = await Promise.all([auctionService.get(id), pendingService.bids(id)]);
+      const [a, b] = await Promise.all([auctionService.get(id), bidService.list(id)]);
       setAuction(a);
       setBids((prev) => {
-        // Mantém lances recebidos pelo socket que a rota (ou a resposta genérica) não trouxe.
+        // Mantém lances recebidos pelo socket que ainda não vieram na resposta.
         const ids = new Set(b.map((x) => x.id));
         return [...b, ...prev.filter((x) => !ids.has(x.id))].sort(
           (x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt),
@@ -89,7 +92,7 @@ export default function Sala() {
     }
   }, [id]);
 
-  /** Aplica um lance aceito (vindo do servidor ou da resposta genérica). */
+  /** Aplica um lance aceito (evento da sala ou ack do próprio lance). */
   const applyBid = useCallback((evt: BidEvent) => {
     const me = userRef.current;
     const prev = auctionRef.current;
@@ -100,6 +103,7 @@ export default function Sala() {
             ...a,
             finalPriceCents: evt.priceCents,
             winnerId: evt.leaderId,
+            winner: { id: evt.leaderId, name: evt.bid.bidderName, createdAt: a.winner?.createdAt ?? '' },
             bidCount: evt.bidCount,
             endsAt: evt.endsAt,
             minimumBidCents: evt.minimumBidCents,
@@ -134,13 +138,16 @@ export default function Sala() {
       failures = 0;
       setConn('ok');
       try {
-        const ack = await joinAuction(s, id);
-        if (ack.snapshot) {
+        // Entra (ou reentra, depois de reconectar) com o papel que a pessoa escolheu.
+        const ack = await joinAuction(s, id, roleRef.current);
+        if (ack.ok) {
           setAuction(ack.snapshot.auction);
           setBids(ack.snapshot.bids);
-          if (ack.snapshot.presence) setPresence(ack.snapshot.presence);
+          setPresence(ack.snapshot.presence);
+          setLoadError(null);
+        } else if (ack.error === 'NOT_FOUND') {
+          setLoadError('Leilão não encontrado.');
         } else {
-          // PENDENTE: sem snapshot no join, busca o estado pela API REST.
           await refresh();
         }
       } catch {
@@ -157,7 +164,8 @@ export default function Sala() {
       setAuction((a) =>
         a ? { ...a, status: e.status, endsAt: e.endsAt, winnerId: e.winnerId, finalPriceCents: e.finalPriceCents } : a,
       );
-      if (e.status === 'RUNNING') void refresh();
+      // Abriu, vendeu, encerrou ou cancelou: busca o estado completo (vencedor, mínimo...).
+      void refresh();
     };
     const onBid = (e: BidEvent) => e.auctionId === id && applyBid(e);
     const onPresence = (e: PresenceEvent) => e.auctionId === id && setPresence(e);
@@ -223,14 +231,16 @@ export default function Sala() {
   const leaderName = useMemo(() => {
     if (!auction || auction.bidCount === 0 || !auction.winnerId) return '—';
     if (auction.winnerId === user?.id) return 'Você';
+    if (auction.winner?.id === auction.winnerId) return shortName(auction.winner.name);
     const b = bids.find((x) => x.bidderId === auction.winnerId);
     return b ? shortName(b.bidderName) : 'Outro participante';
   }, [auction, bids, user]);
 
-  const changeRole = (r: 'participant' | 'spectator') => {
+  const changeRole = (r: Role) => {
     setRoleState(r);
     setMsg(null);
-    setRole(getSocket(), id, r);
+    // Se falhar (sem conexão), o papel é reenviado no próximo auction:join.
+    setRole(getSocket(), id, r).catch(() => undefined);
   };
 
   async function handleBid(e: FormEvent) {
@@ -248,56 +258,32 @@ export default function Sala() {
     // Uma chave por tentativa: se a conexão cair e o lance for reenviado, não duplica (RF12).
     const idempotencyKey = uuid();
     try {
-      const ack = await placeBid(
-        getSocket(),
-        { auctionId: auction.id, amountCents: value, idempotencyKey },
-        { id: user.id, name: shortName(user.name) },
-      );
+      const ack = await placeBid(getSocket(), { auctionId: auction.id, amountCents: value, idempotencyKey });
       if (ack.ok) {
-        let evt: BidEvent;
-        if (ack.mocked || !ack.auction) {
-          // Resposta genérica: calcula localmente o que o servidor calcularia.
-          const t = serverNow();
-          const maxEnd = Date.parse(auction.originalEndsAt) + LIMITS.EXTENSION_MAX_MS;
-          const extended = endsAtMs - t < LIMITS.EXTENSION_WINDOW_MS;
-          const newEnd = extended ? Math.min(maxEnd, Math.max(endsAtMs, t + LIMITS.EXTENSION_WINDOW_MS)) : endsAtMs;
-          evt = {
-            auctionId: auction.id,
-            bid: ack.bid,
-            priceCents: value,
-            minimumBidCents: value + bidIncrementCents(value),
-            leaderId: user.id,
-            bidCount: auction.bidCount + 1,
-            endsAt: new Date(newEnd).toISOString(),
-            extended: newEnd > endsAtMs,
-            serverTime: new Date(t).toISOString(),
-          };
-        } else {
-          const a = { ...auction, ...ack.auction };
-          evt = {
-            auctionId: a.id,
-            bid: ack.bid,
-            priceCents: a.finalPriceCents ?? value,
-            minimumBidCents: a.minimumBidCents ?? minimumBid(a),
-            leaderId: user.id,
-            bidCount: a.bidCount,
-            endsAt: a.endsAt,
-            extended: Date.parse(a.endsAt) > endsAtMs,
-            serverTime: new Date().toISOString(),
-          };
-        }
+        const evt: BidEvent = {
+          auctionId: auction.id,
+          bid: ack.bid,
+          priceCents: ack.auction.finalPriceCents,
+          minimumBidCents: ack.auction.minimumBidCents,
+          leaderId: ack.auction.winnerId,
+          bidCount: ack.auction.bidCount,
+          endsAt: ack.auction.endsAt,
+          extended: ack.extended,
+          serverTime: new Date().toISOString(),
+        };
         applyBid(evt);
         setAmount(moneyPlain(evt.minimumBidCents));
         setToast({
           kind: 'ok',
-          title: `Lance aceito: ${money(value)}`,
+          title: `Lance aceito: ${money(ack.bid.amountCents)}`,
           text: evt.extended ? 'Você é o líder. O término foi prorrogado.' : 'Você é o líder agora.',
         });
       } else {
         const currentMin = ack.minimumBidCents ?? min;
         const reason = REJECT_TEXT[ack.error] ?? ack.message ?? 'Lance recusado.';
         setMsg(`${reason} O lance mínimo agora é ${money(currentMin)}.`);
-        if (ack.minimumBidCents) setAuction((a) => (a ? { ...a, minimumBidCents: ack.minimumBidCents! } : a));
+        const serverMin = ack.minimumBidCents;
+        if (serverMin) setAuction((a) => (a ? { ...a, minimumBidCents: serverMin } : a));
       }
     } catch (err) {
       setMsg(`${errorMessage(err, 'O servidor não respondeu.')} O lance mínimo agora é ${money(min)}.`);

@@ -51,6 +51,7 @@ export interface OwnItem extends Item {
 
 export interface Auction {
   id: string;
+  ownerId: string;
   title: string;
   description: string;
   status: AuctionStatus;
@@ -68,6 +69,8 @@ export interface Auction {
   updatedAt: string;
   items: Item[];
   owner: PublicUser;
+  /** Em andamento: líder atual. Depois: vencedor. Null sem lances. */
+  winner: PublicUser | null;
 }
 
 export interface Paginated<T> {

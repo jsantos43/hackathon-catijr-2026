@@ -7,11 +7,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNow } from '../hooks/useNow';
 import { CATEGORIES, CATEGORY_LABEL, plural, timezoneLabel } from '../lib/format';
 import { errorMessage } from '../services/api';
-import { auctionService } from '../services/auctionService';
+import { auctionService, type AuctionSort } from '../services/auctionService';
 import type { Auction, AuctionStatus, Category } from '../types';
 
 type StateFilter = 'todos' | 'live' | 'sched';
-type Sort = 'ends' | 'starts' | 'price' | 'bids';
 
 const STATE_TO_STATUS: Record<StateFilter, AuctionStatus[]> = {
   todos: ['RUNNING', 'SCHEDULED'],
@@ -21,17 +20,6 @@ const STATE_TO_STATUS: Record<StateFilter, AuctionStatus[]> = {
 
 const PAGE_SIZE = 12;
 
-const currentPrice = (a: Auction) => (a.bidCount > 0 && a.finalPriceCents !== null ? a.finalPriceCents : a.startingPriceCents);
-
-// A API só ordena por término; as outras ordens são aplicadas no que já foi carregado.
-// TODO(api): aceitar ?sort= na listagem para ordenar no servidor.
-const SORTERS: Record<Sort, (a: Auction, b: Auction) => number> = {
-  ends: () => 0,
-  starts: (a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt),
-  price: (a, b) => currentPrice(a) - currentPrice(b),
-  bids: (a, b) => b.bidCount - a.bidCount,
-};
-
 export default function Listagem() {
   const { isAuthenticated } = useAuth();
   const now = useNow();
@@ -40,7 +28,7 @@ export default function Listagem() {
   const q = params.get('q') ?? '';
   const st = (params.get('estado') as StateFilter) || 'todos';
   const cat = (params.get('categoria') as Category | null) ?? null;
-  const [sort, setSort] = useState<Sort>('ends');
+  const [sort, setSort] = useState<AuctionSort>('ends');
   const [search, setSearch] = useState(q);
 
   const [auctions, setAuctions] = useState<Auction[]>([]);
@@ -81,7 +69,7 @@ export default function Listagem() {
     setLoading(true);
     setError(null);
     auctionService
-      .list({ q, status: STATE_TO_STATUS[st], category: cat ? [cat] : undefined, page, pageSize: PAGE_SIZE })
+      .list({ q, status: STATE_TO_STATUS[st], category: cat ? [cat] : undefined, sort, page, pageSize: PAGE_SIZE })
       .then((r) => {
         if (!active) return;
         setAuctions((prev) => (page === 1 ? r.items : [...prev, ...r.items.filter((a) => !prev.some((p) => p.id === a.id))]));
@@ -92,13 +80,13 @@ export default function Listagem() {
     return () => {
       active = false;
     };
-  }, [q, st, cat, page, retry]);
+  }, [q, st, cat, sort, page, retry]);
 
-  // Leilões que acabaram de encerrar somem da listagem sem recarregar.
-  const visible = useMemo(() => {
-    const open = auctions.filter((a) => !(a.status === 'RUNNING' && Date.parse(a.endsAt) < now - 5000));
-    return sort === 'ends' ? open : [...open].sort(SORTERS[sort]);
-  }, [auctions, sort, now]);
+  // A ordem vem do servidor (?sort=). Leilões que acabaram de encerrar somem sem recarregar.
+  const visible = useMemo(
+    () => auctions.filter((a) => !(a.status === 'RUNNING' && Date.parse(a.endsAt) < now - 5000)),
+    [auctions, now],
+  );
 
   const stateLabel = st === 'live' ? 'em andamento' : st === 'sched' ? 'agendados' : 'agendados e em andamento';
 
@@ -159,7 +147,10 @@ export default function Listagem() {
               className="select"
               style={{ height: 48, borderRadius: 12, width: 'auto' }}
               value={sort}
-              onChange={(e) => setSort(e.target.value as Sort)}
+              onChange={(e) => {
+                setSort(e.target.value as AuctionSort);
+                setPage(1); // ordem nova começa da primeira página
+              }}
             >
               <option value="ends">Terminam primeiro</option>
               <option value="starts">Começam primeiro</option>

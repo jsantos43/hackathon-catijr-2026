@@ -110,7 +110,9 @@ export const errorMessage = (err: unknown, fallback = 'Algo deu errado. Tente de
 export const isMissingRoute = (err: unknown) => {
   if (!axios.isAxiosError(err) || !err.response) return false;
   const body = (err.response.data ?? {}) as Partial<ApiErrorBody>;
-  if (err.response.status === 404) return /^Route /.test(body.message ?? '');
+  if (err.response.status === 404) {
+    return [body.message, ...(body.details ?? [])].some((m) => /^Route /.test(m ?? ''));
+  }
   if (err.response.status === 400) return (body.details ?? []).some((d) => /^id: .*UUID/i.test(d));
   return false;
 };

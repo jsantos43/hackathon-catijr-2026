@@ -14,6 +14,7 @@ import {
   money,
   plural,
   relativeDay,
+  shortName,
 } from '../lib/format';
 import { auctionService } from '../services/auctionService';
 
@@ -157,7 +158,9 @@ export default function Detalhe() {
             )}
             {a.status === 'SOLD' && (
               <div className="result-card" style={{ background: 'var(--win-tint)', color: 'var(--win-text)' }}>
-                <span className="title">{a.winnerId === user?.id ? 'Você venceu!' : 'Vendido'}</span>
+                <span className="title">
+                  {a.winnerId === user?.id ? 'Você venceu!' : a.winner ? `Vendido para ${shortName(a.winner.name)}` : 'Vendido'}
+                </span>
                 <span>
                   Valor final {money(a.finalPriceCents)} · {plural(a.bidCount, 'lance', 'lances')}
                 </span>
@@ -172,7 +175,11 @@ export default function Detalhe() {
             {a.status === 'CANCELLED' && (
               <div className="result-card" style={{ border: '1px dashed var(--line-strong)' }}>
                 <span className="title">Cancelado</span>
-                <span className="muted">O comitente cancelou este leilão antes de qualquer lance.</span>
+                <span className="muted">
+                  {a.bidCount > 0
+                    ? 'A disputa foi interrompida por uma falha do sistema e o leilão foi cancelado. Nenhum lance vale.'
+                    : 'O comitente cancelou este leilão antes de qualquer lance.'}
+                </span>
               </div>
             )}
             {isOwner && (

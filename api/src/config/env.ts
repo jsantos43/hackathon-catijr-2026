@@ -8,6 +8,7 @@ const envSchema = z.object({
   DATABASE_URL: z.url(),
 
   REDIS_URL: z.url().default("redis://localhost:6379"),
+  // Segurança: o estado quente de uma sala expira sozinho se ninguém o apagar (ex.: queda).
   REDIS_ROOM_TTL_SECONDS: z.coerce.number().int().positive().default(24 * 60 * 60),
 
   JWT_SECRET: z.string().min(16, "JWT_SECRET precisa ter pelo menos 16 caracteres"),
@@ -44,8 +45,24 @@ const envSchema = z.object({
   AUCTION_EXTENSION_SECONDS: z.coerce.number().int().positive().default(2 * 60),
   AUCTION_MAX_EXTENSION_SECONDS: z.coerce.number().int().nonnegative().default(30 * 60),
 
-  // RF09: quantos lances recentes a sala envia no snapshot.
-  AUCTION_RECENT_BIDS_LIMIT: z.coerce.number().int().positive().default(10),
+  // RF09: quantos lances recentes a sala envia no snapshot ao entrar.
+  AUCTION_RECENT_BIDS_LIMIT: z.coerce.number().int().positive().default(20),
+
+  // Regra de queda (decisão da equipe): ao subir, leilões que estavam Em andamento viram
+  // Cancelados. Dá para desligar em dev (o tsx watch reinicia a API a cada arquivo salvo).
+  AUCTION_CANCEL_RUNNING_ON_BOOT: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+
+  // Anti-rajada: intervalo mínimo entre dois lances do mesmo usuário (reenvio não conta).
+  BID_THROTTLE_MS: z.coerce.number().int().nonnegative().default(500),
+  // Por quanto tempo o resultado de um lance fica guardado pela chave de idempotência.
+  BID_IDEMPOTENCY_TTL_SECONDS: z.coerce.number().int().positive().default(24 * 60 * 60),
+
+  // Rate limit HTTP de login e cadastro (por IP).
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
+  AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
 
   // Quantos itens um lote (leilão) pode ter.
   AUCTION_MAX_ITEMS: z.coerce.number().int().positive().default(10),

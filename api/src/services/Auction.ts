@@ -6,55 +6,22 @@ import { db } from '../prisma/db.js';
 import {
   AUCTION_DESCRIPTION_MAX,
   type CreateAuctionData,
+  type AuctionSort,
   type ListAuctionsQuery,
   type MyAuctionsQuery,
   type UpdateAuctionData,
 } from '../schemas/Auction.js';
-import { emitAuctionStatus } from '../socket/events.js';
-import { minimumBidCents } from '../utils/money.js';
-import AuctionRoom from './AuctionRoom.js';
-import { itemSelect, lockOwnItems, serializeItem } from './Item.js';
+import RoomEmitter from '../socket/RoomEmitter.js';
+import {
+  auctionSelect,
+  OPEN_STATUSES,
+  serializeAuction,
+  type AuctionRow,
+} from '../views/auction.js';
+import { lockOwnItems } from './Item.js';
+import RoomState from './RoomState.js';
 
 type Tx = Prisma.TransactionClient;
-
-const OPEN_STATUSES: AuctionStatus[] = [AuctionStatus.SCHEDULED, AuctionStatus.RUNNING];
-
-const auctionSelect = {
-  id: true,
-  title: true,
-  description: true,
-  status: true,
-  startingPriceCents: true,
-  bidCount: true,
-  startsAt: true,
-  originalEndsAt: true,
-  endsAt: true,
-  winnerId: true,
-  finalPriceCents: true,
-  createdAt: true,
-  updatedAt: true,
-  items: { select: { item: { select: itemSelect } }, orderBy: { position: 'asc' } },
-  // Perfil público do comitente: sem e-mail.
-  owner: { select: { id: true, name: true, createdAt: true } },
-} as const satisfies Prisma.AuctionSelect;
-
-type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof auctionSelect }>;
-
-type EndedAuctionRow = {
-  id: string;
-  status: string;
-  endsAt: Date;
-  winnerId: string | null;
-  finalPriceCents: number | null;
-  bidCount: number;
-};
-
-const serializeAuction = ({ items, ...auction }: AuctionRow) => ({
-  ...auction,
-  items: items.map(({ item }) => serializeItem(item)),
-  // Só faz sentido enquanto ainda dá para dar lance.
-  minimumBidCents: OPEN_STATUSES.includes(auction.status) ? minimumBidCents(auction) : null,
-});
 
 const secondsFromNow = (seconds: number) => new Date(Date.now() + seconds * 1000);
 
@@ -160,15 +127,56 @@ const paginate = async (
   return { auctions: auctions.map(serializeAuction), page, pageSize, total };
 };
 
+/** Preço que aparece no card: o maior lance, ou o preço inicial se ainda não houve lance. */
+const currentPrice = (a: { bidCount: number; finalPriceCents: number | null; startingPriceCents: number }) =>
+  a.bidCount > 0 && a.finalPriceCents !== null ? a.finalPriceCents : a.startingPriceCents;
+
+/**
+ * Ordenar por preço atual precisa de COALESCE(finalPriceCents, startingPriceCents), que o
+ * Prisma não faz no orderBy. Busca só id + preços dos que passam no filtro, ordena aqui e
+ * depois carrega a página. Serve bem enquanto a listagem tem algumas centenas de leilões.
+ */
+const paginateByPrice = async (
+  where: Prisma.AuctionWhereInput,
+  { page, pageSize }: { page: number; pageSize: number },
+) => {
+  const rows = await db.auction.findMany({
+    where,
+    select: { id: true, bidCount: true, finalPriceCents: true, startingPriceCents: true },
+  });
+  const ids = rows
+    .sort((a, b) => currentPrice(a) - currentPrice(b) || a.id.localeCompare(b.id))
+    .slice((page - 1) * pageSize, page * pageSize)
+    .map((r) => r.id);
+
+  const found = await db.auction.findMany({ where: { id: { in: ids } }, select: auctionSelect });
+  const byId = new Map(found.map((a) => [a.id, a]));
+  const auctions = ids.map((id) => byId.get(id)).filter((a): a is AuctionRow => !!a);
+
+  return { auctions: auctions.map(serializeAuction), page, pageSize, total: rows.length };
+};
+
+const SORT_ORDER: Record<Exclude<AuctionSort, 'price'>, Prisma.AuctionOrderByWithRelationInput[]> = {
+  ends: [{ endsAt: 'asc' }, { id: 'asc' }],
+  starts: [{ startsAt: 'asc' }, { id: 'asc' }],
+  bids: [{ bidCount: 'desc' }, { endsAt: 'asc' }, { id: 'asc' }],
+};
+
 class Auction {
-  /** RF20/RF21: listagem pública. Os que terminam primeiro aparecem primeiro. */
+  /**
+   * RF20/RF21: listagem pública. `sort`: ends (termina primeiro, padrão), starts, price, bids.
+   * Sem `sort`, se a lista incluir encerrados, os mais recentes vêm primeiro.
+   */
   static async list(query: ListAuctionsQuery) {
     const where: Prisma.AuctionWhereInput = {
       ...buildWhere(query),
       ...(query.ownerId && { ownerId: query.ownerId }),
     };
-    const onlyOpen = query.status.every((s) => OPEN_STATUSES.includes(s));
 
+    if (query.sort === 'price') return paginateByPrice(where, query);
+    if (query.sort) return paginate(where, query, SORT_ORDER[query.sort]);
+
+    const onlyOpen = query.status.every((s) => OPEN_STATUSES.includes(s));
     return paginate(where, query, [{ endsAt: onlyOpen ? 'asc' : 'desc' }, { id: 'asc' }]);
   }
 
@@ -308,41 +316,6 @@ class Auction {
     return Auction.readById(id);
   }
 
-  static async onEnded(result: {
-    auctionId: string;
-    bidCount: number;
-    winnerId: string | null;
-    finalPriceCents: number | null;
-  }) {
-    const now = new Date();
-    const hasBids = result.bidCount > 0;
-
-    const [row] = await db.$queryRaw<EndedAuctionRow[]>`
-      UPDATE "Auction"
-         SET status = (CASE WHEN ${hasBids}::boolean THEN 'SOLD' ELSE 'ENDED_NO_BIDS' END)::"AuctionStatus",
-             "bidCount" = ${result.bidCount}::int,
-             "winnerId" = CASE WHEN ${hasBids}::boolean THEN ${result.winnerId}::uuid ELSE NULL END,
-             "finalPriceCents" = CASE WHEN ${hasBids}::boolean THEN ${result.finalPriceCents}::int ELSE NULL END,
-             "updatedAt" = ${now}
-       WHERE id = ${result.auctionId}::uuid AND status = 'RUNNING'
-      RETURNING id, status::text AS status, "endsAt", "winnerId", "finalPriceCents", "bidCount"`;
-
-    if (!row) {
-      console.log(`Leilão ${result.auctionId} já estava encerrado`);
-      return null;
-    }
-
-    if (row.bidCount > 0) {
-      console.log(
-        `Leilão ${row.id} encerrado. Vencedor: ${row.winnerId} por ${row.finalPriceCents} centavos`,
-      );
-    } else {
-      console.log(`Leilão ${row.id} encerrado sem lances`);
-    }
-
-    return row;
-  }
-
   /**
    * RF08: cancela enquanto Agendado ou Em andamento sem lances. Nada é apagado, e os itens
    * ficam livres para entrar em outro lote.
@@ -350,41 +323,24 @@ class Auction {
    * recusado) ou depois (e encontra o leilão já cancelado).
    */
   static async cancel(id: string, userId: string) {
-    const frozen = await AuctionRoom.freezeForCancel(id).catch((err) => {
-      console.error(`Erro ao travar a sala do leilão ${id} para cancelamento`, err);
-      return { ok: false, code: 'REDIS_ERROR' };
+    await db.$transaction(async (tx) => {
+      const auction = await lockOwnAuction(tx, id, userId);
+      const now = new Date();
+
+      if (!OPEN_STATUSES.includes(auction.status) || auction.endsAt <= now) {
+        throw new Unprocessable('Only scheduled or running auctions can be cancelled');
+      }
+      if (auction.bidCount > 0) {
+        throw new Unprocessable('Auctions with bids cannot be cancelled');
+      }
+
+      await tx.auction.update({ where: { id }, data: { status: AuctionStatus.CANCELLED } });
     });
 
-    if (!frozen.ok && frozen.code === 'HAS_BIDS') {
-      throw new Unprocessable('Auctions with bids cannot be cancelled');
-    }
-
-    try {
-      await db.$transaction(async (tx) => {
-        const auction = await lockOwnAuction(tx, id, userId);
-        const now = new Date();
-
-        if (!OPEN_STATUSES.includes(auction.status) || auction.endsAt <= now) {
-          throw new Unprocessable('Only scheduled or running auctions can be cancelled');
-        }
-        if (auction.bidCount > 0) {
-          throw new Unprocessable('Auctions with bids cannot be cancelled');
-        }
-
-        await tx.auction.update({
-          where: { id },
-          data: { status: AuctionStatus.CANCELLED },
-        });
-      });
-    } catch (err) {
-      await AuctionRoom.unfreezeForCancel(id).catch(() => undefined);
-      throw err;
-    }
-
-    await AuctionRoom.dispose(id, 'CANCELLED');
-
+    // Fora da transação: a sala some do Redis e quem está nela é avisado.
+    await RoomState.clear(id);
     const auction = await Auction.readById(id);
-    emitAuctionStatus(auction);
+    RoomEmitter.status(auction);
 
     return auction;
   }

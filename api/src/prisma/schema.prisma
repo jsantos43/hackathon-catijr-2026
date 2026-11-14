@@ -43,6 +43,7 @@ model User {
   items           Item[]
   auctions        Auction[] @relation("AuctionOwner")
   wonAuctions     Auction[] @relation("AuctionWinner")
+  bids            Bid[]
 }
 
 model Item {
@@ -84,6 +85,7 @@ model Auction {
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   items  AuctionItem[]
+  bids   Bid[]
   owner  User          @relation("AuctionOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   winner User?         @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: Restrict)
 
@@ -106,4 +108,24 @@ model AuctionItem {
   @@id([auctionId, itemId])
   @@unique([auctionId, position])
   @@index([itemId])
+}
+
+// Lances aceitos (RF10–RF15). Só entram aqui lances que passaram por todas as validações;
+// recusas não são gravadas. É a fonte da verdade: o Redis só guarda uma cópia do estado da sala.
+model Bid {
+  id          String   @id @default(uuid()) @db.Uuid
+  auctionId   String   @db.Uuid
+  bidderId    String   @db.Uuid
+  amountCents Int
+  // Chave gerada pelo navegador a cada tentativa. Reenviar a mesma chave (ex.: a conexão caiu
+  // antes do ack) devolve o mesmo lance em vez de criar outro (RF12).
+  idempotencyKey String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  bidder  User    @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+
+  @@unique([bidderId, idempotencyKey])
+  @@index([auctionId, createdAt(sort: Desc)])
+  @@index([bidderId, auctionId])
 }
