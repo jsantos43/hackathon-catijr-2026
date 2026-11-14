@@ -1,0 +1,65 @@
+name: leilao
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-leilao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leilao}
+      POSTGRES_DB: ${POSTGRES_DB:-leilao}
+      TZ: UTC
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # As imagens oficiais minio/minio saíram do Docker Hub/Quay; usamos o build do Chainguard.
+  # O bucket é criado pela própria API na inicialização (src/lib/storage.ts -> ensureBucket).
+  minio:
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"   # API S3
+      - "${MINIO_CONSOLE_PORT:-9001}:9001" # Console web
+    volumes:
+      - minio_data:/data
+
+  api:
+    build:
+      context: ./api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3333
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leilao}:${POSTGRES_PASSWORD:-leilao}@postgres:5432/${POSTGRES_DB:-leilao}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-troque-este-segredo-em-producao-123456}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-2h}
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://localhost:9000}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-auction-photos}
+      S3_FORCE_PATH_STYLE: "true"
+    ports:
+      - "${API_PORT:-3333}:3333"
+
+volumes:
+  postgres_data:
+  minio_data:

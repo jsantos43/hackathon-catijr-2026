@@ -1,0 +1,121 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Valores em dinheiro são guardados em centavos (Int) para evitar erro de arredondamento (RF19).
+// Horários são sempre timestamptz em UTC; o fuso de exibição é responsabilidade do front (RF19).
+
+enum AuctionStatus {
+  SCHEDULED // Agendado
+  RUNNING // Em andamento
+  SOLD // Vendido
+  ENDED_NO_BIDS // Encerrado sem lances
+  CANCELLED // Cancelado
+}
+
+enum Category {
+  ELECTRONICS
+  FASHION
+  HOME
+  VEHICLES
+  ART
+  COLLECTIBLES
+  SPORTS
+  OTHER
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  displayName  String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  items    Item[]
+  auctions Auction[] @relation("AuctionSeller")
+  bids     Bid[]
+  wins     Auction[] @relation("AuctionWinner")
+}
+
+// Bem anunciado. Um item pode ter vários leilões ao longo do tempo (relistagem, RF28).
+model Item {
+  id          String   @id @default(uuid()) @db.Uuid
+  sellerId    String   @db.Uuid
+  name        String
+  description String
+  category    Category
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  seller   User        @relation(fields: [sellerId], references: [id])
+  photos   ItemPhoto[]
+  auctions Auction[]
+
+  @@index([sellerId])
+}
+
+// Só a chave do objeto no storage (S3/MinIO) fica no banco, nunca o arquivo (RF07).
+model ItemPhoto {
+  id        String   @id @default(uuid()) @db.Uuid
+  itemId    String   @db.Uuid
+  objectKey String   @unique
+  mimeType  String
+  sizeBytes Int
+  position  Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, position])
+}
+
+model Auction {
+  id                 String        @id @default(uuid()) @db.Uuid
+  itemId             String        @db.Uuid
+  sellerId           String        @db.Uuid
+  status             AuctionStatus @default(SCHEDULED)
+  startingPriceCents Int
+  currentPriceCents  Int?
+  bidCount           Int           @default(0)
+  leaderId           String?       @db.Uuid
+  startsAt           DateTime      @db.Timestamptz(3)
+  originalEndsAt     DateTime      @db.Timestamptz(3)
+  endsAt             DateTime      @db.Timestamptz(3) // término vigente, já com prorrogações
+  closedAt           DateTime?     @db.Timestamptz(3)
+  cancelledAt        DateTime?     @db.Timestamptz(3)
+  createdAt          DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @db.Timestamptz(3)
+
+  item   Item  @relation(fields: [itemId], references: [id])
+  seller User  @relation("AuctionSeller", fields: [sellerId], references: [id])
+  leader User? @relation("AuctionWinner", fields: [leaderId], references: [id])
+  bids   Bid[]
+
+  @@index([status, startsAt])
+  @@index([status, endsAt])
+  @@index([sellerId])
+  @@index([itemId])
+}
+
+model Bid {
+  id             String   @id @default(uuid()) @db.Uuid
+  auctionId      String   @db.Uuid
+  bidderId       String   @db.Uuid
+  amountCents    Int
+  // Chave gerada no navegador por tentativa de lance: reenvio devolve o resultado original (RF12).
+  idempotencyKey String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  auction Auction @relation(fields: [auctionId], references: [id])
+  bidder  User    @relation(fields: [bidderId], references: [id])
+
+  @@unique([bidderId, idempotencyKey])
+  @@index([auctionId, createdAt(sort: Desc)])
+}
