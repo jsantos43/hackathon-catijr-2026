@@ -16,17 +16,17 @@ const envSchema = z.object({
   ACCESS_TOKEN_TTL: z.coerce.number().int().positive().default(15 * 60),
   REFRESH_TOKEN_TTL: z.coerce.number().int().positive().default(7 * 24 * 60 * 60),
 
-  S3_ENDPOINT: z.url(),
-  // URL que o navegador usa para baixar as fotos (no compose, o endpoint interno é http://minio:9000).
-  S3_PUBLIC_URL: z.url(),
-  S3_REGION: z.string().default("us-east-1"),
-  S3_ACCESS_KEY: z.string().min(1),
-  S3_SECRET_KEY: z.string().min(1),
-  S3_BUCKET: z.string().min(1),
-  S3_FORCE_PATH_STYLE: z
-    .enum(["true", "false"])
-    .default("true")
-    .transform((v) => v === "true"),
+  // Fotos no disco (decisão da equipe; ver utils/storage.ts). UPLOADS_PUBLIC_URL é o endereço
+  // que o navegador usa: em produção o nginx serve /uploads direto do volume.
+  UPLOADS_DIR: z.string().min(1).default("./uploads"),
+  UPLOADS_PUBLIC_URL: z.url().default("http://localhost:3333/uploads"),
+
+  // Conexões do pool do PostgreSQL. Na VM pequena, poucas bastam (cada uma custa memória no banco).
+  DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
+
+  // Atrás do nginx, de quais proxies confiar no X-Forwarded-For (para o rate limit ver o IP real).
+  // Valor do Express: "loopback, uniquelocal" cobre localhost e a rede interna do Docker.
+  TRUST_PROXY: z.string().default("loopback, uniquelocal"),
 
   // RF05/RF06: limites de leilão e fotos. Ficam no .env para a demo poder usar leilões curtos
   // (ex.: AUCTION_MIN_LEAD_SECONDS=60 e AUCTION_MIN_DURATION_SECONDS=180). Tempos em segundos.
@@ -68,7 +68,7 @@ const envSchema = z.object({
   AUCTION_MAX_ITEMS: z.coerce.number().int().positive().default(10),
 
   ITEM_MIN_PHOTOS: z.coerce.number().int().positive().default(3),
-  ITEM_MAX_PHOTOS: z.coerce.number().int().positive().default(10),
+  ITEM_MAX_PHOTOS: z.coerce.number().int().positive().default(8),
   PHOTO_MAX_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
 });
 

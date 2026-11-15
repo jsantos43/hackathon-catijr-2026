@@ -34,8 +34,27 @@ export const itemService = {
     return data.item;
   },
 
-  async update(id: string, fields: Partial<ItemFields>, photos: File[] = []) {
-    const { data } = await api.put<{ item: OwnItem }>(`/item/${id}`, toForm(fields, photos));
+  async get(id: string): Promise<OwnItem> {
+    const { data } = await api.get<{ item: OwnItem }>(`/item/${id}`);
+    return data.item;
+  },
+
+  /**
+   * `keepImages`: fotos atuais que continuam, na ordem final (a primeira é a capa). As fotos
+   * novas entram depois delas. Sem `keepImages`, fotos novas substituem todas.
+   */
+  async update(
+    id: string,
+    fields: Partial<ItemFields>,
+    photos: File[] = [],
+    keepImages?: string[],
+    onProgress?: (pct: number) => void,
+  ) {
+    const form = toForm(fields, photos);
+    if (keepImages) form.append('keepImages', JSON.stringify(keepImages));
+    const { data } = await api.put<{ item: OwnItem }>(`/item/${id}`, form, {
+      onUploadProgress: (e) => onProgress?.(e.total ? Math.round((e.loaded / e.total) * 100) : 0),
+    });
     return data.item;
   },
 

@@ -419,6 +419,29 @@ export default function Sala() {
           </div>
         </div>
 
+        {/* Lote: todos os itens que o vencedor leva juntos */}
+        {auction.items.length > 1 && (
+          <section className="room-lot" aria-label={`Itens do lote (${auction.items.length})`}>
+            <span className="room-label">Lote com {auction.items.length} itens · o vencedor leva todos</span>
+            <ul>
+              {auction.items.map((item, idx) => (
+                <li key={item.id}>
+                  <span className="room-lot-thumb">
+                    <Photo src={item.images[0]} alt="" />
+                  </span>
+                  <span className="stack" style={{ gap: 0, minWidth: 0 }}>
+                    <span className="room-lot-name">{item.name}</span>
+                    <span className="small muted">
+                      {CATEGORY_LABEL[item.category]}
+                      {idx === 0 ? ' · capa' : ''}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {/* Destaque: tempo e valor atual */}
         <section
           className={`room-hero ${urgent ? 'urgent' : ''} ${ended ? 'ended' : ''} ${status === 'SCHEDULED' ? 'scheduled' : ''}`}

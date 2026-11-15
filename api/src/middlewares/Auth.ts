@@ -17,7 +17,7 @@ class Auth {
         req.sessionVersion = sessionVersion;
 
         const authorized = Service.checkPermission(user, permission, req.params.id);
-        if (!authorized) throw new Forbidden(`You need the "${permission}" permission`);
+        if (!authorized) throw new Forbidden(`Você precisa da permissão "${permission}"`);
 
         return next();
       } catch (err) {

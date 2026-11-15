@@ -11,6 +11,10 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<User>;
   register: (data: CreateUserData) => Promise<User>;
   logout: () => Promise<void>;
+  /** Troca o nome de exibição e atualiza a sessão em memória. */
+  updateName: (name: string) => Promise<User>;
+  /** Exclui (anonimiza) a conta e encerra a sessão. */
+  deleteAccount: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -64,9 +68,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const updateName = useCallback(async (name: string) => {
+    const updated = await userService.update({ name });
+    setUser(updated);
+    return updated;
+  }, []);
+
+  const deleteAccount = useCallback(async () => {
+    await userService.delete();
+    disconnectSocket();
+    setUser(null);
+  }, []);
+
   return (
     <AuthContext.Provider
-      value={{ user, loading, isAuthenticated: user !== null, login, register, logout }}
+      value={{ user, loading, isAuthenticated: user !== null, login, register, logout, updateName, deleteAccount }}
     >
       {children}
     </AuthContext.Provider>

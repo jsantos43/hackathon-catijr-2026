@@ -1,31 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
-import { env } from '../config/env.js';
 import { Unauthorized } from '../errors/index.js';
 import type { LoginData } from '../schemas/Auth.js';
 import Service from '../services/Auth.js';
-
-const setAuthCookies = (res: Response, tokens: { accessToken: string; refreshToken: string }) => {
-  res.cookie('accessToken', tokens.accessToken, {
-    httpOnly: true,
-    secure: env.isProd,
-    sameSite: 'lax',
-    maxAge: env.accessTokenTtl * 1000,
-  });
-
-  res.cookie('refreshToken', tokens.refreshToken, {
-    httpOnly: true,
-    secure: env.isProd,
-    sameSite: 'lax',
-    path: '/auth',
-    maxAge: env.refreshTokenTtl * 1000,
-  });
-};
-
-const clearAuthCookies = (res: Response) => {
-  res.clearCookie('accessToken');
-  // Precisa do mesmo path usado ao criar, senão o navegador não remove o cookie.
-  res.clearCookie('refreshToken', { path: '/auth' });
-};
+import { clearAuthCookies, setAuthCookies } from '../utils/cookies.js';
 
 class Auth {
   static async login(

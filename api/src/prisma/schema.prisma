@@ -39,6 +39,8 @@ model User {
   refreshTokenExpires DateTime? @db.Timestamptz(3)
   createdAt           DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+  // Conta excluída (anonimizada). Os leilões e lances continuam existindo para o histórico.
+  deletedAt           DateTime? @db.Timestamptz(3)
 
   items           Item[]
   auctions        Auction[] @relation("AuctionOwner")

@@ -5,31 +5,31 @@ import { AuctionStatus, Category } from '../generated/prisma/enums.js';
 export const MAX_PRICE_CENTS = 1_000_000_000;
 
 const startingPriceCents = z
-  .number('startingPriceCents must be a number of cents')
-  .int('startingPriceCents must be an integer number of cents')
-  .min(100, 'Starting price must be at least R$ 1,00')
+  .number('O preço inicial precisa ser um número (em centavos)')
+  .int('O preço inicial precisa ser um número inteiro de centavos')
+  .min(100, 'O preço inicial precisa ser de pelo menos R$ 1,00')
   .max(MAX_PRICE_CENTS);
 
 // ISO 8601 com fuso (ex.: "2026-11-14T18:00:00Z" ou "...-03:00")
-const startsAt = z.iso.datetime({ offset: true, error: 'startsAt must be an ISO date with timezone' }).transform((v) => new Date(v));
+const startsAt = z.iso.datetime({ offset: true, error: 'O início precisa ser uma data ISO com fuso horário' }).transform((v) => new Date(v));
 
 const durationSeconds = z
   .number()
   .int()
-  .min(env.AUCTION_MIN_DURATION_SECONDS, `Duration must be at least ${env.AUCTION_MIN_DURATION_SECONDS} seconds`)
-  .max(env.AUCTION_MAX_DURATION_SECONDS, `Duration must be at most ${env.AUCTION_MAX_DURATION_SECONDS} seconds`);
+  .min(env.AUCTION_MIN_DURATION_SECONDS, `A duração precisa ser de pelo menos ${env.AUCTION_MIN_DURATION_SECONDS} segundos`)
+  .max(env.AUCTION_MAX_DURATION_SECONDS, `A duração pode ser de no máximo ${env.AUCTION_MAX_DURATION_SECONDS} segundos`);
 
 export const AUCTION_TITLE_MAX = 100;
 export const AUCTION_DESCRIPTION_MAX = 3000;
 
-const title = z.string().trim().min(3, 'Title must be at least 3 characters').max(AUCTION_TITLE_MAX);
+const title = z.string().trim().min(3, 'O título precisa ter pelo menos 3 caracteres').max(AUCTION_TITLE_MAX);
 const description = z.string().trim().max(AUCTION_DESCRIPTION_MAX).default('');
 
 const itemIds = z
-  .array(z.uuid('itemIds must contain valid UUIDs'))
-  .min(1, 'Send at least one item')
-  .max(env.AUCTION_MAX_ITEMS, `An auction can have at most ${env.AUCTION_MAX_ITEMS} items`)
-  .refine((ids) => new Set(ids).size === ids.length, 'itemIds must not repeat items');
+  .array(z.uuid('itemIds precisa ter ids válidos'))
+  .min(1, 'Escolha pelo menos um item')
+  .max(env.AUCTION_MAX_ITEMS, `Um leilão pode ter no máximo ${env.AUCTION_MAX_ITEMS} itens`)
+  .refine((ids) => new Set(ids).size === ids.length, 'O mesmo item não pode aparecer duas vezes');
 
 export const createAuctionSchema = z.object({
   title,
@@ -52,12 +52,12 @@ export const updateAuctionSchema = z
     durationSeconds: durationSeconds.exactOptional(),
     appendDescription: z.string().trim().min(1).max(500).exactOptional(),
   })
-  .refine((data) => Object.keys(data).length > 0, 'Send at least one field to update');
+  .refine((data) => Object.keys(data).length > 0, 'Envie pelo menos um campo para alterar');
 
 export type UpdateAuctionData = z.infer<typeof updateAuctionSchema>;
 
 export const auctionIdSchema = z.object({
-  id: z.uuid('Id must be a valid UUID'),
+  id: z.uuid('Id inválido (UUID)'),
 });
 
 export type AuctionIdParams = z.infer<typeof auctionIdSchema>;

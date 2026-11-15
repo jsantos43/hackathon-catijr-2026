@@ -36,7 +36,7 @@ router
     '/item/:id',
     Auth.require('logged'),
     Validate.params(itemIdSchema),
-    Upload.images({ required: false }), // Se mandar fotos, substituem todas as atuais
+    Upload.images({ required: false }), // Fotos novas; keepImages diz quais atuais ficam (ver schema)
     Validate.body(updateItemSchema),
     Controller.update
   )

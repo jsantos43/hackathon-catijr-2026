@@ -20,6 +20,7 @@ import {
 } from '../views/auction.js';
 import { lockOwnItems } from './Item.js';
 import RoomState from './RoomState.js';
+import { containsPattern } from '../utils/search.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -29,12 +30,12 @@ const secondsFromNow = (seconds: number) => new Date(Date.now() + seconds * 1000
 const assertStartWindow = (startsAt: Date) => {
   if (startsAt < secondsFromNow(env.AUCTION_MIN_LEAD_SECONDS)) {
     throw new Unprocessable(
-      `startsAt must be at least ${env.AUCTION_MIN_LEAD_SECONDS} seconds from now`,
+      `O início precisa ser pelo menos ${env.AUCTION_MIN_LEAD_SECONDS} segundos à frente`,
     );
   }
   if (startsAt > secondsFromNow(env.AUCTION_MAX_LEAD_SECONDS)) {
     throw new Unprocessable(
-      `startsAt must be at most ${env.AUCTION_MAX_LEAD_SECONDS} seconds from now`,
+      `O início pode ser no máximo ${Math.round(env.AUCTION_MAX_LEAD_SECONDS / 86400)} dias à frente`,
     );
   }
 };
@@ -67,8 +68,8 @@ const lockAvailableItems = async (
     throw new Unprocessable(
       conflicts.map(({ item, auction }) =>
         auction.status === AuctionStatus.SOLD
-          ? `"${item.name}" was already sold`
-          : `"${item.name}" is already in a scheduled or running auction`,
+          ? `"${item.name}" já foi vendido`
+          : `"${item.name}" já está em outro leilão agendado ou em andamento`,
       ),
     );
   }
@@ -81,31 +82,42 @@ const lockAvailableItems = async (
 const lockOwnAuction = async (tx: Tx, id: string, userId: string) => {
   const [locked] = await tx.$queryRaw<{ id: string }[]>`
     SELECT id FROM "Auction" WHERE id = ${id}::uuid FOR UPDATE`;
-  if (!locked) throw new NotFound('Auction not found');
+  if (!locked) throw new NotFound('Leilão não encontrado');
 
   const auction = await tx.auction.findUniqueOrThrow({ where: { id } });
-  if (auction.ownerId !== userId) throw new Forbidden('This auction belongs to another user');
+  if (auction.ownerId !== userId) throw new Forbidden('Esse leilão é de outra pessoa');
 
   return auction;
 };
 
 const lotItems = (itemIds: string[]) => itemIds.map((itemId, position) => ({ itemId, position }));
 
-const buildWhere = (
+/**
+ * Ids dos leilões cujo título, ou o nome de algum item do lote, contém o texto buscado.
+ * Ignora maiúsculas e acentos (unaccent), então "camera" acha "Câmera" (RF21: grafia diferente).
+ */
+const auctionIdsMatching = async (q: string) => {
+  const pattern = containsPattern(q);
+  const rows = await db.$queryRaw<{ id: string }[]>`
+    SELECT a.id FROM "Auction" a
+     WHERE unaccent(a.title) ILIKE unaccent(${pattern})
+    UNION
+    SELECT ai."auctionId" FROM "AuctionItem" ai
+      JOIN "Item" i ON i.id = ai."itemId"
+     WHERE unaccent(i.name) ILIKE unaccent(${pattern})`;
+  return rows.map((r) => r.id);
+};
+
+const buildWhere = async (
   query: Pick<ListAuctionsQuery, 'q' | 'category' | 'status'>,
-): Prisma.AuctionWhereInput => ({
+): Promise<Prisma.AuctionWhereInput> => ({
   status: { in: query.status },
   // Categoria: o lote aparece se tiver pelo menos um item dela.
   ...(query.category && {
     items: { some: { item: { category: { in: query.category } } } },
   }),
   // Busca pelo título do leilão ou pelo nome de qualquer item do lote.
-  ...(query.q && {
-    OR: [
-      { title: { contains: query.q, mode: 'insensitive' } },
-      { items: { some: { item: { name: { contains: query.q, mode: 'insensitive' } } } } },
-    ],
-  }),
+  ...(query.q && { id: { in: await auctionIdsMatching(query.q) } }),
 });
 
 const paginate = async (
@@ -221,7 +233,7 @@ class Auction {
    */
   static async list(query: ListAuctionsQuery) {
     const where: Prisma.AuctionWhereInput = {
-      ...buildWhere(query),
+      ...(await buildWhere(query)),
       ...(query.ownerId && { ownerId: query.ownerId }),
     };
 
@@ -235,7 +247,7 @@ class Auction {
 
   /** Leilões que o usuário criou (como comitente), em qualquer estado. */
   static async listOwn(userId: string, query: MyAuctionsQuery) {
-    return paginate({ ...buildWhere(query), ownerId: userId }, query, [
+    return paginate({ ...(await buildWhere(query)), ownerId: userId }, query, [
       { createdAt: 'desc' },
       { id: 'asc' },
     ]);
@@ -246,7 +258,7 @@ class Auction {
    * corre, winnerId é apenas o líder atual.
    */
   static async listWon(userId: string, query: MyAuctionsQuery) {
-    return paginate({ ...buildWhere(query), status: AuctionStatus.SOLD, winnerId: userId }, query, [
+    return paginate({ ...(await buildWhere(query)), status: AuctionStatus.SOLD, winnerId: userId }, query, [
       { endsAt: 'desc' },
       { id: 'asc' },
     ]);
@@ -255,7 +267,7 @@ class Auction {
   static async readById(id: string) {
     const auction = await db.auction.findUnique({ where: { id }, select: auctionSelect });
 
-    if (!auction) throw new NotFound('Auction not found');
+    if (!auction) throw new NotFound('Leilão não encontrado');
 
     return serializeAuction(auction);
   }
@@ -312,7 +324,7 @@ class Auction {
       if (changesFields) {
         if (!fullyEditable) {
           throw new Unprocessable(
-            `Only text can be appended now: other fields can change only while the auction is scheduled more than ${Math.round(env.AUCTION_EDIT_LOCK_SECONDS / 60)} minutes ahead`,
+            `Agora só é possível acrescentar texto à descrição: os outros campos só mudam enquanto faltar mais de ${Math.round(env.AUCTION_EDIT_LOCK_SECONDS / 60)} minutos para o início`,
           );
         }
 
@@ -352,14 +364,14 @@ class Auction {
         const canAppend =
           fullyEditable || (auction.status === AuctionStatus.RUNNING && now < auction.endsAt);
         if (!canAppend) {
-          throw new Unprocessable('Text can only be appended while the auction is running');
+          throw new Unprocessable('Só é possível acrescentar texto enquanto o leilão está em andamento');
         }
 
         // Só acrescenta: o que já estava escrito quando alguém deu lance continua lá.
         const current = fields.description ?? auction.description;
         const description = current ? `${current}\n\n${appendDescription}` : appendDescription;
         if (description.length > AUCTION_DESCRIPTION_MAX) {
-          throw new Unprocessable(`Description would exceed ${AUCTION_DESCRIPTION_MAX} characters`);
+          throw new Unprocessable(`A descrição passaria de ${AUCTION_DESCRIPTION_MAX} caracteres`);
         }
 
         await tx.auction.update({ where: { id }, data: { description } });
@@ -381,10 +393,10 @@ class Auction {
       const now = new Date();
 
       if (!OPEN_STATUSES.includes(auction.status) || auction.endsAt <= now) {
-        throw new Unprocessable('Only scheduled or running auctions can be cancelled');
+        throw new Unprocessable('Só leilões agendados ou em andamento podem ser cancelados');
       }
       if (auction.bidCount > 0) {
-        throw new Unprocessable('Auctions with bids cannot be cancelled');
+        throw new Unprocessable('Leilões com lances não podem ser cancelados');
       }
 
       await tx.auction.update({ where: { id }, data: { status: AuctionStatus.CANCELLED } });

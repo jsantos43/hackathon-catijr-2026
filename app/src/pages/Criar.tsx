@@ -1,4 +1,4 @@
-import { ArrowLeft } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check3, Dialog, ErrorState, Photo, Spinner } from '../components/ui';
@@ -70,6 +70,15 @@ export default function Criar() {
     [itemIds, ownItems],
   );
   const blocked = items.filter((i) => !isAvailable(i));
+
+  /** Reordena o lote (o primeiro item é a capa do leilão). */
+  const moveItem = (from: number, to: number) =>
+    setItemIds(() => {
+      const ids = items.map((i) => i.id);
+      const [moved] = ids.splice(from, 1);
+      ids.splice(to, 0, moved!);
+      return ids;
+    });
   const single = items.length === 1 ? items[0] : null;
 
   const priceCents = parseMoney(price);
@@ -169,6 +178,30 @@ export default function Criar() {
                         </span>
                       </span>
                       {!isAvailable(i) && <span className="badge badge-live-soft">Indisponível</span>}
+                      {items.length > 1 && (
+                        <span className="row" style={{ gap: 4 }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={idx === 0}
+                            aria-label={`Subir ${i.name}${idx === 1 ? ' (vira a capa)' : ''}`}
+                            title={idx === 1 ? 'Usar como capa do lote' : 'Subir'}
+                            onClick={() => moveItem(idx, idx - 1)}
+                          >
+                            <ArrowUp size={16} aria-hidden />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={idx === items.length - 1}
+                            aria-label={`Descer ${i.name}`}
+                            title="Descer"
+                            onClick={() => moveItem(idx, idx + 1)}
+                          >
+                            <ArrowDown size={16} aria-hidden />
+                          </button>
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -15,12 +15,12 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
+    "db:seed": "tsx --env-file-if-exists=.env src/scripts/seed.ts",
+    "photos:import": "tsx --env-file-if-exists=.env src/scripts/import-minio-photos.ts",
     "postinstall": "prisma generate"
   },
   "type": "module",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1169.0",
-    "@aws-sdk/s3-request-presigner": "^3.1169.0",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
     "@socket.io/redis-adapter": "^8.3.0",

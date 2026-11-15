@@ -62,35 +62,8 @@ api.interceptors.response.use(
 /** Renova a sessão (usado pelo socket quando o handshake é recusado). */
 export const refreshSession = () => refreshClient.post('/auth/refresh');
 
-// A API responde em inglês; traduz o que é comum para mostrar ao usuário.
-const TRANSLATIONS: [RegExp, string][] = [
-  [/Email or password is invalid/i, 'E-mail ou senha inválidos.'],
-  [/email is already in use/i, 'Já existe uma conta com este e-mail.'],
-  [/Password must be at least (\d+)/i, 'A senha precisa ter pelo menos $1 caracteres.'],
-  [/Email is not valid/i, 'E-mail inválido.'],
-  [/startsAt must be at least (\d+) seconds/i, 'O início precisa ser pelo menos $1 segundos à frente.'],
-  [/startsAt must be at most/i, 'O início pode ser no máximo 30 dias à frente.'],
-  [/Auctions with bids cannot be cancelled/i, 'Leilões com lances não podem ser cancelados.'],
-  [/Only scheduled or running auctions can be cancelled/i, 'Só leilões agendados ou em andamento podem ser cancelados.'],
-  [/Only text can be appended now/i, 'Agora só é possível acrescentar texto à descrição.'],
-  [/send at least (\d+) photos/i, 'Envie pelo menos $1 fotos.'],
-  [/only JPEG, PNG or WEBP/i, 'Só aceitamos fotos JPG, PNG ou WebP.'],
-  [/File too large/i, 'Uma das fotos passa do limite de 5 MB.'],
-  [/already sold/i, 'Um dos itens já foi vendido.'],
-  [/already in a scheduled or running auction/i, 'Um dos itens já está em outro leilão agendado ou em andamento.'],
-  [/Description must be at least (\d+)/i, 'A descrição precisa ter pelo menos $1 caracteres.'],
-  [/Name must be at least (\d+)/i, 'O nome precisa ter pelo menos $1 caracteres.'],
-  [/Title must be at least (\d+)/i, 'O título precisa ter pelo menos $1 caracteres.'],
-];
-
-const translate = (msg: string) => {
-  const clean = msg.replace(/^[\w.]+: /, '');
-  for (const [re, pt] of TRANSLATIONS) {
-    const m = clean.match(re);
-    if (m) return pt.replace(/\$(\d)/g, (_, i: string) => m[Number(i)] ?? '');
-  }
-  return clean;
-};
+// A API já responde em português; só tira o prefixo do campo ("name: ...", "images: ...").
+const translate = (msg: string) => msg.replace(/^[\w.]+: /, '');
 
 /** Mensagem legível de um erro da API (ou de rede). */
 export const errorMessage = (err: unknown, fallback = 'Algo deu errado. Tente de novo.') => {

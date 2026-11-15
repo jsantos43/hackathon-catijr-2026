@@ -1,12 +1,14 @@
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import Layout, { RequireAuth } from './components/Layout';
+import Comitentes from './pages/Comitentes';
+import Conta from './pages/Conta';
 import Criar from './pages/Criar';
 import Detalhe from './pages/Detalhe';
 import Inventario from './pages/Inventario';
+import ItemForm from './pages/ItemForm';
 import Listagem from './pages/Listagem';
 import Login from './pages/Login';
 import MeusLeiloes from './pages/MeusLeiloes';
-import NovoItem from './pages/NovoItem';
 import Participacoes from './pages/Participacoes';
 import Perfil from './pages/Perfil';
 import Sala from './pages/Sala';
@@ -38,13 +40,16 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<Listagem />} />
           <Route path="/leiloes/:id" element={<Detalhe />} />
+          <Route path="/comitentes" element={<Comitentes />} />
           <Route path="/comitentes/:id" element={<Perfil />} />
           <Route element={<RequireAuth />}>
             <Route path="/anunciar" element={<Inventario />} />
-            <Route path="/anunciar/novo-item" element={<NovoItem />} />
+            <Route path="/anunciar/novo-item" element={<ItemForm />} />
+            <Route path="/itens/:id/editar" element={<ItemForm />} />
             <Route path="/anunciar/leilao" element={<Criar />} />
             <Route path="/meus-leiloes" element={<MeusLeiloes />} />
             <Route path="/participacoes" element={<Participacoes />} />
+            <Route path="/conta" element={<Conta />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Route>

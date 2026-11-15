@@ -3,10 +3,11 @@
 API do leilão em tempo real: Express 5 + Prisma 7 (PostgreSQL) + Redis + Socket.IO.
 
 ```bash
-docker compose up -d          # na raiz: postgres, redis, minio, api (porta 3333) e app
+docker compose up -d          # na raiz: postgres, redis, api (porta 3333) e app
 npm run dev                   # ou rode a API fora do Docker (pare o serviço api antes)
 npm test                      # testes (precisam do postgres e do redis do compose no ar)
 npm run typecheck             # src/ e tests/
+npm run db:seed               # dados de demonstração (-- --sala: lote novo Em andamento; -- --reset: recria tudo)
 ```
 
 ---
@@ -18,7 +19,7 @@ navegador ──HTTP (cookies httpOnly)──▶ Express ──▶ PostgreSQL  f
     │                                   │
     └──────Socket.IO (mesmo cookie)─────┼──▶ Redis       acelerador: estado quente da sala, idempotência,
                                         │                anti-rajada, presença, rate limit, adapter do socket
-                                        └──▶ MinIO (S3)  fotos
+                                        └──▶ disco       fotos (UPLOADS_DIR; o nginx serve em produção)
 ```
 
 - **PostgreSQL decide.** Todo lance é validado e gravado numa transação com a linha do leilão
@@ -31,7 +32,7 @@ navegador ──HTTP (cookies httpOnly)──▶ Express ──▶ PostgreSQL  f
 
 ```
 src/
-  server.ts            ponto de entrada: bucket → regra de queda → HTTP + socket → job
+  server.ts            ponto de entrada: pasta de fotos → regra de queda → HTTP + socket → job
   app.ts               o Express (sem listen); os testes usam direto
   config/env.ts        todas as variáveis de ambiente, validadas com zod
   prisma/              schema.prisma, migrations e o cliente (db.ts)
@@ -165,8 +166,8 @@ npm run test:watch
 ```
 
 Os testes de integração usam um banco separado (`leilao_test`, criado e migrado sozinho pelo
-`tests/globalSetup.ts`) e o índice 15 do Redis, e apagam tudo antes de cada teste. O MinIO é
-substituído por um mock (`tests/setup.ts`). Para apontar para outro lugar: `TEST_DATABASE_URL`
+`tests/globalSetup.ts`) e o índice 15 do Redis, e apagam tudo antes de cada teste. A gravação
+de fotos é um mock (`tests/setup.ts`); o multer grava os temporários numa pasta do sistema. Para apontar para outro lugar: `TEST_DATABASE_URL`
 e `TEST_REDIS_URL`.
 
 O que está coberto: regras de cada recusa de lance, idempotência (inclusive sem Redis),

@@ -1,21 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import {
-  CreateBucketCommand,
-  DeleteObjectsCommand,
-  HeadBucketCommand,
-  PutBucketPolicyCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
+import { constants } from 'node:fs';
+import { access, mkdir, open, rename, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { env } from '../config/env.js';
 
-// RF07: as fotos ficam só no bucket. No banco guardamos apenas a chave do objeto.
-const s3 = new S3Client({
-  endpoint: env.S3_ENDPOINT,
-  region: env.S3_REGION,
-  forcePathStyle: env.S3_FORCE_PATH_STYLE,
-  credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
-});
+/**
+ * Fotos no disco da VM (o RF07, que exigia armazenamento em nuvem, foi riscado do documento).
+ * Decisão da equipe: com 1 vCPU e 1 GB de RAM, um serviço a mais (MinIO/S3) custava memória e
+ * quebrava a VM. O arquivo fica cru em UPLOADS_DIR e o banco guarda só a chave relativa
+ * ("items/<itemId>/<uuid>.jpg"). Em produção o nginx serve /uploads direto do volume, sem
+ * passar pelo Node; em dev a própria API serve (app.ts).
+ */
+export const UPLOADS_ROOT = path.resolve(env.UPLOADS_DIR);
+/** Onde o multer grava os arquivos recebidos antes da validação (mesmo disco: rename é atômico). */
+export const UPLOADS_TMP = path.join(UPLOADS_ROOT, '.tmp');
 
 export type ImageType = { mime: string; ext: string };
 
@@ -36,34 +34,55 @@ const detectImageType = (buf: Buffer): ImageType | undefined => {
 
 export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-export const imageTypeOf = detectImageType;
+/** Lê só os primeiros bytes do arquivo (no disco ou em memória) para descobrir o tipo real. */
+export const imageTypeOf = async (file: Pick<Express.Multer.File, 'buffer' | 'path'>) => {
+  if (file.buffer) return detectImageType(file.buffer);
+  const handle = await open(file.path, 'r');
+  try {
+    const head = Buffer.alloc(12);
+    const { bytesRead } = await handle.read(head, 0, 12, 0);
+    return detectImageType(head.subarray(0, bytesRead));
+  } finally {
+    await handle.close();
+  }
+};
 
-export const publicUrl = (key: string) =>
-  `${env.S3_PUBLIC_URL.replace(/\/$/, '')}/${env.S3_BUCKET}/${key}`;
+export const publicUrl = (key: string) => `${env.UPLOADS_PUBLIC_URL.replace(/\/$/, '')}/${key}`;
 
-/** Sobe as fotos de um item e devolve as chaves, na mesma ordem dos arquivos. */
+/** Caminho absoluto de uma chave, garantindo que não escapa da pasta de uploads. */
+const pathOf = (key: string) => {
+  const full = path.resolve(UPLOADS_ROOT, key);
+  if (!full.startsWith(UPLOADS_ROOT + path.sep)) throw new Error(`Chave de foto inválida: ${key}`);
+  return full;
+};
+
+/**
+ * Guarda as fotos de um item e devolve as chaves, na mesma ordem dos arquivos.
+ * Arquivo vindo do multer (no .tmp) é só renomeado; buffer (seed) é gravado.
+ */
 export const uploadItemImages = async (itemId: string, files: Express.Multer.File[]) => {
   const keys: string[] = [];
+  const dir = pathOf(`items/${itemId}/x`);
+  await mkdir(path.dirname(dir), { recursive: true });
 
   try {
     for (const file of files) {
-      const type = detectImageType(file.buffer);
-      if (!type) throw new Error(`Unsupported image: ${file.originalname}`);
+      const type = await imageTypeOf(file);
+      if (!type) throw new Error(`Imagem não suportada: ${file.originalname}`);
 
       const key = `items/${itemId}/${randomUUID()}.${type.ext}`;
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: env.S3_BUCKET,
-          Key: key,
-          Body: file.buffer,
-          ContentType: type.mime,
-          CacheControl: 'public, max-age=31536000, immutable',
-        }),
-      );
+      if (file.path) {
+        await rename(file.path, pathOf(key));
+      } else {
+        // Grava num temporário e renomeia: quem lê nunca vê um arquivo pela metade.
+        const tmp = path.join(UPLOADS_TMP, `${randomUUID()}.part`);
+        await writeFile(tmp, file.buffer);
+        await rename(tmp, pathOf(key));
+      }
       keys.push(key);
     }
   } catch (err) {
-    // Não deixa fotos órfãs no bucket se uma delas falhar no meio.
+    // Não deixa fotos órfãs se uma delas falhar no meio.
     await deleteObjects(keys);
     throw err;
   }
@@ -71,58 +90,23 @@ export const uploadItemImages = async (itemId: string, files: Express.Multer.Fil
   return keys;
 };
 
-/** Remove objetos do bucket. Falhas só são logadas: lixo no bucket não quebra a operação. */
+/** Remove fotos do disco. Falhas só são logadas: arquivo sobrando não quebra a operação. */
 export const deleteObjects = async (keys: string[]) => {
-  if (!keys.length) return;
-
-  try {
-    await s3.send(
-      new DeleteObjectsCommand({
-        Bucket: env.S3_BUCKET,
-        Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
-      }),
-    );
-  } catch (err) {
-    console.error('Falha ao remover fotos do bucket', err);
-  }
+  await Promise.all(
+    keys.map((key) =>
+      rm(pathOf(key), { force: true }).catch((err: unknown) => console.error('Falha ao remover foto', key, err)),
+    ),
+  );
 };
 
-/**
- * Garante que o bucket existe e que as fotos podem ser lidas publicamente pelo navegador.
- * Roda na subida da API; no provedor de nuvem o bucket pode já vir criado e com a política certa.
- */
-export const ensureBucket = async () => {
-  try {
-    await s3.send(new HeadBucketCommand({ Bucket: env.S3_BUCKET }));
-  } catch {
-    try {
-      await s3.send(new CreateBucketCommand({ Bucket: env.S3_BUCKET }));
-      console.log(`Bucket "${env.S3_BUCKET}" criado`);
-    } catch (err) {
-      console.error(`Não foi possível criar o bucket "${env.S3_BUCKET}"`, err);
-      return;
-    }
-  }
+/** Apaga temporários do multer que não viraram foto (upload recusado, erro de validação...). */
+export const discardTempFiles = async (files: Express.Multer.File[]) => {
+  await Promise.all(files.filter((f) => f.path).map((f) => rm(f.path, { force: true }).catch(() => undefined)));
+};
 
-  // Idempotente: aplica sempre, para um bucket criado à mão também ficar legível.
-  try {
-    await s3.send(
-      new PutBucketPolicyCommand({
-        Bucket: env.S3_BUCKET,
-        Policy: JSON.stringify({
-          Version: '2012-10-17',
-          Statement: [
-            {
-              Effect: 'Allow',
-              Principal: '*',
-              Action: ['s3:GetObject'],
-              Resource: [`arn:aws:s3:::${env.S3_BUCKET}/*`],
-            },
-          ],
-        }),
-      }),
-    );
-  } catch (err) {
-    console.error(`Não foi possível liberar leitura pública no bucket "${env.S3_BUCKET}"`, err);
-  }
+/** Roda na subida da API: cria a pasta de uploads e confere se dá para escrever nela. */
+export const ensureUploadsDir = async () => {
+  await mkdir(UPLOADS_TMP, { recursive: true });
+  await access(UPLOADS_ROOT, constants.W_OK);
+  console.log(`Fotos em ${UPLOADS_ROOT}`);
 };

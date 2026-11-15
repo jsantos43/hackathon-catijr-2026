@@ -30,7 +30,7 @@ class Auth {
 
       return accessTokenPayloadSchema.parse(payload);
     } catch {
-      throw new Unauthorized('Invalid or expired access token');
+      throw new Unauthorized('Sessão inválida ou expirada');
     }
   }
 
@@ -39,7 +39,7 @@ class Auth {
 
     const passwordMatches = await compareHash(password, user?.password || DUMMY_HASH);
 
-    if (!user || !passwordMatches) throw new Unauthorized('Email or password is invalid');
+    if (!user || !passwordMatches) throw new Unauthorized('E-mail ou senha inválidos');
 
     const refreshToken = generateRandomToken();
 
@@ -51,7 +51,7 @@ class Auth {
       },
     });
 
-    if (!count) throw new Unauthorized('Session changed, please log in again');
+    if (!count) throw new Unauthorized('Sua sessão mudou, entre de novo');
 
     return {
       user: await User.readById(user.id),
@@ -61,13 +61,13 @@ class Auth {
   }
 
   static async refresh(refreshToken: string | undefined) {
-    if (!refreshToken) throw new Unauthorized('Missing refresh token');
+    if (!refreshToken) throw new Unauthorized('Sessão expirada, entre de novo');
 
     const tokenHash = hashToken(refreshToken);
     const user = await db.user.findUnique({ where: { refreshTokenHash: tokenHash } });
 
     if (!user?.refreshTokenExpires || user.refreshTokenExpires <= new Date()) {
-      throw new Unauthorized('Invalid or expired refresh token');
+      throw new Unauthorized('Sessão expirada, entre de novo');
     }
 
     // Rotação: o refresh token antigo deixa de valer. O where com o hash antigo garante que
@@ -81,7 +81,7 @@ class Auth {
       },
     });
 
-    if (!count) throw new Unauthorized('Invalid or expired refresh token');
+    if (!count) throw new Unauthorized('Sessão expirada, entre de novo');
 
     return {
       accessToken: Auth.generateAccessToken(user.id, user.sessionVersion),
@@ -104,12 +104,12 @@ class Auth {
     user: AuthUser;
     sessionVersion: number;
   }> {
-    if (!token) throw new Unauthorized('Missing access token');
+    if (!token) throw new Unauthorized('Você precisa entrar na sua conta');
 
     const { sub, sv } = Auth.verifyAccessToken(token);
 
     const user = await User.findActiveSession(sub, sv);
-    if (!user) throw new Unauthorized('Session is no longer valid');
+    if (!user) throw new Unauthorized('Sua sessão não é mais válida, entre de novo');
 
     return { user, sessionVersion: sv };
   }

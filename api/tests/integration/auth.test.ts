@@ -29,7 +29,7 @@ describe('Cadastro, login e sessão', () => {
 
   it('não diz se foi o e-mail ou a senha que errou', async () => {
     const res = await request(app).post('/auth/login').send({ email: 'ninguem@teste.com', password: 'x' }).expect(401);
-    expect(res.body.details).toEqual(['Email or password is invalid']);
+    expect(res.body.details).toEqual(['E-mail ou senha inválidos']);
   });
 
   it('e-mail repetido responde 409', async () => {
