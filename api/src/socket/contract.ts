@@ -10,7 +10,7 @@
  *
  *  servidor -> sala
  *   auction:status   mudou o estado do leilão (abriu, vendeu, encerrou sem lances, cancelou)
- *   auction:bid      um lance foi gravado (sempre DEPOIS do COMMIT no banco)
+ *   auction:bid      um lance foi aceito (sempre DEPOIS de gravado na sala, no Redis)
  *   auction:presence mudou a contagem de participantes/espectadores
  */
 import type { AuctionStatus } from '../generated/prisma/enums.js';

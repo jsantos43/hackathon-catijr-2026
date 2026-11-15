@@ -3,7 +3,6 @@
 # O .env de produção é gerado pelo deploy.sh (veja o README/AGENTS.md).
 #
 # Imagens: o GitHub Actions constrói e publica no GHCR (API_IMAGE/APP_IMAGE) e a VM só faz pull.
-# Sem essas variáveis, o deploy.sh constrói aqui mesmo (lento e pesado numa VM pequena).
 #
 # Orçamento de memória (limites; o uso normal fica bem abaixo):
 #   postgres 256 MB · redis 64 MB · api 320 MB · nginx 48 MB  ≈ 690 MB + sistema/Docker.
@@ -60,10 +59,12 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # Só estado temporário das salas (o PostgreSQL é a fonte da verdade e a regra de queda
-    # recria/cancela as salas na subida): sem AOF nem snapshot, nada de escrita em disco.
-    # noeviction: melhor recusar escrita do que apagar o estado de uma sala aberta.
-    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "48mb", "--maxmemory-policy", "noeviction"]
+    # Durante a disputa os lances vivem SÓ no Redis (o PostgreSQL recebe tudo no fechamento).
+    # AOF com fsync a cada segundo: se só o Redis reiniciar, as salas voltam como estavam.
+    # Sem snapshot RDB (o AOF basta). noeviction: melhor recusar escrita do que apagar uma sala.
+    command: ["redis-server", "--save", "", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "48mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -89,7 +90,6 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-leilao}:${POSTGRES_PASSWORD:-leilao}@postgres:5432/${POSTGRES_DB:-leilao}?schema=public
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-5}
       REDIS_URL: redis://redis:6379
-      REDIS_ROOM_TTL_SECONDS: ${REDIS_ROOM_TTL_SECONDS:-86400}
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env de produção}
       ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-900}
       REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-604800}
@@ -112,8 +112,6 @@ services:
       ITEM_MIN_PHOTOS: ${ITEM_MIN_PHOTOS:-3}
       ITEM_MAX_PHOTOS: ${ITEM_MAX_PHOTOS:-8}
       PHOTO_MAX_BYTES: ${PHOTO_MAX_BYTES:-5242880}
-      # Só usado pela importação única de fotos antigas (scripts/import-minio-photos).
-      MINIO_URL: http://minio:9000/${S3_BUCKET:-auction-photos}
       PRISMA_HIDE_UPDATE_MESSAGE: "1"
     volumes:
       - uploads:/data/uploads
@@ -155,19 +153,7 @@ services:
           memory: 48M
     logging: *logging
 
-  # LEGADO: só para importar uma vez as fotos que estavam no MinIO (o deploy.sh faz isso
-  # sozinho se encontrar o volume antigo). Não sobe no `up` normal.
-  minio:
-    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
-    profiles: ["legado"]
-    command: ["server", "/data"]
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    volumes:
-      - minio_data:/data
-
 volumes:
   postgres_data:
+  redis_data:
   uploads:
-  minio_data:

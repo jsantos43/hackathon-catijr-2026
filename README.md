@@ -59,7 +59,7 @@ cd app && npm run test:e2e    # Playwright: jornada de lance com 4 navegadores (
 | RF13 anti-rajada | 500 ms entre lances do mesmo usuário; reenvio com a mesma chave não conta. | Não pune reenvio legítimo nem bloqueia outras pessoas. |
 | RF14 lance mínimo | Tabela de incrementos de referência (R$ 1 até R$ 99,99 … R$ 500 acima de R$ 25 mil). | Previsível e fácil de explicar. |
 | RF15 prorrogação | Lance com menos de 2 min no relógio leva o término a 2 min depois dele; máximo de 30 min acumulados. | Dá chance de resposta sem esticar para sempre. |
-| RF18 queda | Ao subir, leilões que estavam Em andamento viram Cancelados (`AUCTION_CANCEL_RUNNING_ON_BOOT`). | _Ver observação no AGENTS.md (conflito com RN01)._ |
+| RF18 queda | Ao subir, todo leilão com `startsAt <= agora` ainda não finalizado vira Cancelado (`AUCTION_CANCEL_RUNNING_ON_BOOT`); os lances da sala vão para o histórico. Durante a disputa os lances ficam só no Redis e vão ao PostgreSQL no fechamento. | _Ver observação no AGENTS.md (conflito com RN01)._ |
 | RF20/RF21 listagem e busca | Abertos por padrão (ao vivo primeiro); filtros combináveis de texto, categorias e estado; busca ignora acentos e maiúsculas (`unaccent`); “carregar mais” de 12 em 12. | “camera” acha “Câmera”; a página não carrega tudo de uma vez. |
 | RF22 comitentes | Busca por pedaço do nome; só aparece quem já anunciou. Conta excluída vira “Conta excluída” e o histórico fica. | Perfil público sem e-mail; leilões e lances nunca são apagados (RF08). |
 | RF23 edição | Matriz de referência: > 30 min do início tudo; ≤ 30 min nada; em andamento só acrescentar texto. Vale também para fotos e dados dos itens. | Nada muda depois que alguém pode ter decidido dar lance. |
@@ -75,10 +75,8 @@ O deploy é automático a cada push na `main` pelo workflow
 2. **Na VM, por SSH**: faz login temporário no GHCR com o token do job e roda o
    [`deploy.sh`](./deploy.sh), que:
    - atualiza o repositório (`git fetch`/`reset --hard`);
-   - cria 1 GB de swap se a VM não tiver (precisa de `sudo` sem senha; senão, crie à mão);
    - cria o `.env` de produção na primeira execução (senhas e `JWT_SECRET` aleatórios);
-   - **baixa** as imagens prontas (não constrói na VM) e sobe `compose.prod.yml`;
-   - na primeira vez depois da migração, copia as fotos antigas do MinIO para o disco.
+   - **baixa** as imagens prontas (`API_IMAGE`/`APP_IMAGE`; nunca constrói na VM) e sobe `compose.prod.yml`.
 
 Em produção o nginx (porta **8080**) serve o front, as fotos em `/uploads` e faz proxy de `/user`,
 `/auth`, `/item`, `/auction`, `/health` e `/socket.io` para a API. As migrations do Prisma são
@@ -101,13 +99,7 @@ Pré-requisitos no servidor:
 - Docker Engine + plugin Compose instalados;
 - repositório clonado em `DEPLOY_PATH` com o remote `origin` em SSH e uma **deploy key** com acesso
   de leitura;
-- usuário do SSH com permissão de rodar `docker` (grupo `docker`).
+- usuário do SSH com permissão de rodar `docker` (grupo `docker`);
+- swap configurado na VM (o `deploy.sh` não cria).
 
-Swap manual (se o `deploy.sh` avisar que não conseguiu criar):
-
-```bash
-sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-Deploy manual no servidor (constrói na VM, uma imagem por vez — lento): `cd <repo> && bash deploy.sh`.
+Deploy manual no servidor: `API_IMAGE=ghcr.io/... APP_IMAGE=ghcr.io/... bash deploy.sh` (imagens já publicadas).

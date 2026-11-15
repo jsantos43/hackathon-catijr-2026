@@ -74,7 +74,7 @@ describe('GET /auction/all', () => {
     await createRunningAuction(owner.id, { startingPriceCents: 50_00, title: 'B' });
     await createRunningAuction(owner.id, { startingPriceCents: 30_00, title: 'C' });
     // O lance leva o A de R$ 10 para R$ 80.
-    await Bid.place({ auctionId: cheapWithBid.id, userId: (await createUser()).id, amountCents: 80_00, idempotencyKey: newKey() });
+    await Bid.place({ auctionId: cheapWithBid.id, bidder: await createUser(), amountCents: 80_00, idempotencyKey: newKey() });
 
     const res = await request(app).get('/auction/all?sort=price').expect(200);
 
@@ -86,7 +86,7 @@ describe('GET /auction/all', () => {
     const owner = await createUser();
     await createRunningAuction(owner.id, { title: 'Sem lance' });
     const popular = await createRunningAuction(owner.id, { title: 'Com lance' });
-    await Bid.place({ auctionId: popular.id, userId: (await createUser()).id, amountCents: 100_00, idempotencyKey: newKey() });
+    await Bid.place({ auctionId: popular.id, bidder: await createUser(), amountCents: 100_00, idempotencyKey: newKey() });
 
     const res = await request(app).get('/auction/all?sort=bids').expect(200);
 
@@ -138,7 +138,7 @@ describe('DELETE /auction/:id (RF08)', () => {
   it('não cancela leilão com lances', async () => {
     const owner = await createUser();
     const auction = await createRunningAuction(owner.id);
-    await Bid.place({ auctionId: auction.id, userId: (await createUser()).id, amountCents: 100_00, idempotencyKey: newKey() });
+    await Bid.place({ auctionId: auction.id, bidder: await createUser(), amountCents: 100_00, idempotencyKey: newKey() });
 
     await request(app).delete(`/auction/${auction.id}`).set('Cookie', sessionCookie(owner.id)).expect(422);
   });

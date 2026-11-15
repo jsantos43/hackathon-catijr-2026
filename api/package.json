@@ -16,7 +16,6 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx --env-file-if-exists=.env src/scripts/seed.ts",
-    "photos:import": "tsx --env-file-if-exists=.env src/scripts/import-minio-photos.ts",
     "postinstall": "prisma generate"
   },
   "type": "module",

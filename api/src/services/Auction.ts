@@ -20,6 +20,7 @@ import {
 } from '../views/auction.js';
 import { lockOwnItems } from './Item.js';
 import RoomState from './RoomState.js';
+import Settlement from './Settlement.js';
 import { containsPattern } from '../utils/search.js';
 
 type Tx = Prisma.TransactionClient;
@@ -76,8 +77,9 @@ const lockAvailableItems = async (
 };
 
 /**
- * Trava a linha do leilão até o fim da transação. Quem grava lance deve travar a mesma linha
- * (SELECT ... FOR UPDATE), assim edição/cancelamento nunca acontecem no meio de um lance.
+ * Trava a linha do leilão até o fim da transação (SELECT ... FOR UPDATE): edição, cancelamento
+ * e abertura pelo job (UPDATE condicional) nunca se atropelam. Lances não passam por aqui:
+ * durante a disputa eles só existem no Redis (ver RoomState).
  */
 const lockOwnAuction = async (tx: Tx, id: string, userId: string) => {
   const [locked] = await tx.$queryRaw<{ id: string }[]>`
@@ -120,6 +122,10 @@ const buildWhere = async (
   ...(query.q && { id: { in: await auctionIdsMatching(query.q) } }),
 });
 
+/** Serializa aplicando o estado ao vivo (Redis) nos leilões Em andamento. */
+const serializeLive = async (rows: AuctionRow[]) =>
+  (await RoomState.withLive(rows)).map(serializeAuction);
+
 const paginate = async (
   where: Prisma.AuctionWhereInput,
   { page, pageSize }: { page: number; pageSize: number },
@@ -136,28 +142,56 @@ const paginate = async (
     db.auction.count({ where }),
   ]);
 
-  return { auctions: auctions.map(serializeAuction), page, pageSize, total };
+  return { auctions: await serializeLive(auctions), page, pageSize, total };
 };
 
 /** Preço que aparece no card: o maior lance, ou o preço inicial se ainda não houve lance. */
 const currentPrice = (a: { bidCount: number; finalPriceCents: number | null; startingPriceCents: number }) =>
   a.bidCount > 0 && a.finalPriceCents !== null ? a.finalPriceCents : a.startingPriceCents;
 
+type SortRow = {
+  id: string;
+  status: AuctionStatus;
+  bidCount: number;
+  finalPriceCents: number | null;
+  startingPriceCents: number;
+  winnerId: string | null;
+  endsAt: Date;
+};
+
+const IN_MEMORY_SORT: Record<'price' | 'bids', (a: SortRow, b: SortRow) => number> = {
+  price: (a, b) => currentPrice(a) - currentPrice(b) || a.id.localeCompare(b.id),
+  bids: (a, b) =>
+    b.bidCount - a.bidCount || a.endsAt.getTime() - b.endsAt.getTime() || a.id.localeCompare(b.id),
+};
+
 /**
- * Ordenar por preço atual precisa de COALESCE(finalPriceCents, startingPriceCents), que o
- * Prisma não faz no orderBy. Busca só id + preços dos que passam no filtro, ordena aqui e
- * depois carrega a página. Serve bem enquanto a listagem tem algumas centenas de leilões.
+ * Ordenar por preço atual ou número de lances. Durante a disputa esses valores só existem no
+ * Redis (o PostgreSQL recebe no fechamento), então a ordenação é feita aqui: busca só os campos
+ * de ordenação dos que passam no filtro, aplica o estado ao vivo, ordena e carrega a página.
+ * Serve bem enquanto a listagem tem algumas centenas de leilões.
  */
-const paginateByPrice = async (
+const paginateInMemory = async (
   where: Prisma.AuctionWhereInput,
+  sort: 'price' | 'bids',
   { page, pageSize }: { page: number; pageSize: number },
 ) => {
-  const rows = await db.auction.findMany({
-    where,
-    select: { id: true, bidCount: true, finalPriceCents: true, startingPriceCents: true },
-  });
+  const rows = await RoomState.withLive(
+    await db.auction.findMany({
+      where,
+      select: {
+        id: true,
+        status: true,
+        bidCount: true,
+        finalPriceCents: true,
+        startingPriceCents: true,
+        winnerId: true,
+        endsAt: true,
+      },
+    }),
+  );
   const ids = rows
-    .sort((a, b) => currentPrice(a) - currentPrice(b) || a.id.localeCompare(b.id))
+    .sort(IN_MEMORY_SORT[sort])
     .slice((page - 1) * pageSize, page * pageSize)
     .map((r) => r.id);
 
@@ -165,7 +199,7 @@ const paginateByPrice = async (
   const byId = new Map(found.map((a) => [a.id, a]));
   const auctions = ids.map((id) => byId.get(id)).filter((a): a is AuctionRow => !!a);
 
-  return { auctions: auctions.map(serializeAuction), page, pageSize, total: rows.length };
+  return { auctions: await serializeLive(auctions), page, pageSize, total: rows.length };
 };
 
 /**
@@ -216,13 +250,14 @@ const paginateLiveFirst = async (
     skip = 0;
   }
 
-  return { auctions: rows.map(serializeAuction), page, pageSize, total };
+  return { auctions: await serializeLive(rows), page, pageSize, total };
 };
 
-const SORT_ORDER: Record<Exclude<AuctionSort, 'price' | 'live'>, Prisma.AuctionOrderByWithRelationInput[]> = {
+const SORT_ORDER: Record<Exclude<AuctionSort, 'price' | 'bids' | 'live'>, Prisma.AuctionOrderByWithRelationInput[]> = {
+  // Em andamento, o endsAt do PostgreSQL ainda não tem as prorrogações (estão no Redis);
+  // a diferença é de no máximo alguns minutos na ordem.
   ends: [{ endsAt: 'asc' }, { id: 'asc' }],
   starts: [{ startsAt: 'asc' }, { id: 'asc' }],
-  bids: [{ bidCount: 'desc' }, { endsAt: 'asc' }, { id: 'asc' }],
 };
 
 class Auction {
@@ -237,7 +272,7 @@ class Auction {
       ...(query.ownerId && { ownerId: query.ownerId }),
     };
 
-    if (query.sort === 'price') return paginateByPrice(where, query);
+    if (query.sort === 'price' || query.sort === 'bids') return paginateInMemory(where, query.sort, query);
     if (query.sort === 'live') return paginateLiveFirst(where, query.status, query);
     if (query.sort) return paginate(where, query, SORT_ORDER[query.sort]);
 
@@ -269,7 +304,8 @@ class Auction {
 
     if (!auction) throw new NotFound('Leilão não encontrado');
 
-    return serializeAuction(auction);
+    const [live] = await RoomState.withLive([auction]);
+    return serializeAuction(live!);
   }
 
   /** Cria um lote. Também é a relistagem (RF28): os itens não vendidos podem ir para outro lote. */
@@ -361,8 +397,10 @@ class Auction {
       }
 
       if (appendDescription !== undefined) {
+        // Em andamento, o término que vale (com prorrogações) está na sala, no Redis.
+        const room = auction.status === AuctionStatus.RUNNING ? await RoomState.get(id) : null;
         const canAppend =
-          fullyEditable || (auction.status === AuctionStatus.RUNNING && now < auction.endsAt);
+          fullyEditable || (room?.status === 'RUNNING' && now < room.endsAt);
         if (!canAppend) {
           throw new Unprocessable('Só é possível acrescentar texto enquanto o leilão está em andamento');
         }
@@ -384,29 +422,42 @@ class Auction {
   /**
    * RF08: cancela enquanto Agendado ou Em andamento sem lances. Nada é apagado, e os itens
    * ficam livres para entrar em outro lote.
-   * Com a linha travada, um lance simultâneo ou é gravado antes (e o cancelamento é
-   * recusado) ou depois (e encontra o leilão já cancelado).
+   *
+   * - Agendado: só existe no PostgreSQL. Com a linha travada, a abertura pelo job (UPDATE
+   *   condicional WHERE status = 'SCHEDULED') ou acontece antes ou encontra o leilão cancelado.
+   * - Em andamento: os lances estão no Redis, então quem decide é um script atômico na sala
+   *   ("sem lances e antes do término" -> CANCELLED). Um lance simultâneo ou entra antes (e o
+   *   cancelamento é recusado) ou depois (e encontra a sala cancelada). Depois o Settlement
+   *   grava o resultado no PostgreSQL.
    */
   static async cancel(id: string, userId: string) {
-    await db.$transaction(async (tx) => {
-      const auction = await lockOwnAuction(tx, id, userId);
-      const now = new Date();
+    const now = new Date();
 
-      if (!OPEN_STATUSES.includes(auction.status) || auction.endsAt <= now) {
+    const wasRunning = await db.$transaction(async (tx) => {
+      const auction = await lockOwnAuction(tx, id, userId);
+
+      if (auction.status === AuctionStatus.RUNNING) return true;
+      if (auction.status !== AuctionStatus.SCHEDULED || auction.endsAt <= now) {
         throw new Unprocessable('Só leilões agendados ou em andamento podem ser cancelados');
-      }
-      if (auction.bidCount > 0) {
-        throw new Unprocessable('Leilões com lances não podem ser cancelados');
       }
 
       await tx.auction.update({ where: { id }, data: { status: AuctionStatus.CANCELLED } });
+      return false;
     });
 
-    // Fora da transação: a sala some do Redis e quem está nela é avisado.
-    await RoomState.clear(id);
+    if (wasRunning) {
+      const result = await RoomState.cancel(id, now.getTime());
+      if (result === 'HAS_BIDS') throw new Unprocessable('Leilões com lances não podem ser cancelados');
+      if (result !== 'OK') {
+        throw new Unprocessable('Só leilões agendados ou em andamento podem ser cancelados');
+      }
+      // Grava no PostgreSQL e avisa a sala.
+      await Settlement.settle(id);
+      return Auction.readById(id);
+    }
+
     const auction = await Auction.readById(id);
     RoomEmitter.status(auction);
-
     return auction;
   }
 }

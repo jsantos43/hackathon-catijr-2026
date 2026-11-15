@@ -6,6 +6,7 @@ import { accessTokenPayloadSchema, type AccessTokenPayload } from '../schemas/Au
 import type { AuthUser } from '../types/express.js';
 import { compareHash, hash } from '../utils/hash.js';
 import { generateRandomToken, hashToken, refreshExpiresAt } from '../utils/token.js';
+import SessionCache from './SessionCache.js';
 import User from './User.js';
 
 // Não existe administrador (RF03): só "logado" e "o próprio usuário".
@@ -90,7 +91,7 @@ class Auth {
   }
 
   static async logout(userId: string, sessionVersion: number) {
-    await db.user.updateMany({
+    const { count } = await db.user.updateMany({
       where: { id: userId, sessionVersion },
       data: {
         sessionVersion: { increment: 1 },
@@ -98,6 +99,8 @@ class Auth {
         refreshTokenExpires: null,
       },
     });
+    // Sockets abertos com a sessão antiga param de aceitar lances (ver SessionCache).
+    if (count) await SessionCache.setVersion(userId, sessionVersion + 1);
   }
 
   static async authenticate(token: string | undefined): Promise<{

@@ -17,10 +17,11 @@ import { deflateSync } from 'node:zlib';
 import { env } from '../config/env.js';
 import { AuctionStatus, type Category } from '../generated/prisma/enums.js';
 import { db } from '../prisma/db.js';
-import { closeRedis } from '../redis/client.js';
+import { closeRedis, redis } from '../redis/client.js';
 import RoomState from '../services/RoomState.js';
 import { hash } from '../utils/hash.js';
 import { bidIncrementCents } from '../utils/money.js';
+import { shortName } from '../utils/names.js';
 import { uploadItemImages } from '../utils/storage.js';
 
 export const DEMO_PASSWORD = 'arremate123';
@@ -153,7 +154,9 @@ const reset = async () => {
     throw new Error('--reset em produção apaga tudo; defina SEED_ALLOW_RESET=true se for isso mesmo.');
   }
   await db.$executeRawUnsafe('TRUNCATE "Bid", "AuctionItem", "Auction", "Item", "User" CASCADE');
-  console.log('Banco limpo.');
+  // As salas abertas (e os lances delas) estão no Redis.
+  await redis.flushdb();
+  console.log('Banco e Redis limpos.');
 };
 
 /** Cria as contas de demonstração que ainda não existem e devolve os ids de todas. */
@@ -306,6 +309,8 @@ const main = async () => {
   for (const spec of auctions) {
     const bids = buildBids(spec.startingPriceCents, spec.bidders ?? [], spec.startsAt, spec.endsAt);
     const last = bids.at(-1);
+    // Em andamento, a disputa vive só no Redis: os lances entram na sala, não no banco.
+    const running = spec.status === AuctionStatus.RUNNING;
 
     const auction = await db.auction.create({
       data: {
@@ -314,26 +319,47 @@ const main = async () => {
         description: spec.description,
         status: spec.status,
         startingPriceCents: spec.startingPriceCents,
-        bidCount: bids.length,
+        bidCount: running ? 0 : bids.length,
         startsAt: spec.startsAt,
         originalEndsAt: spec.endsAt,
         endsAt: spec.endsAt,
-        winnerId: last ? ids[last.who] : null,
-        finalPriceCents: last?.amountCents ?? null,
+        winnerId: !running && last ? ids[last.who] : null,
+        finalPriceCents: running ? null : (last?.amountCents ?? null),
         items: { create: spec.items.map((key, position) => ({ itemId: itemIds[key]!, position })) },
-        bids: {
-          create: bids.map((b) => ({
-            bidderId: ids[b.who],
-            amountCents: b.amountCents,
-            idempotencyKey: randomUUID(),
-            createdAt: b.createdAt,
-          })),
-        },
+        ...(!running && {
+          bids: {
+            create: bids.map((b) => ({
+              bidderId: ids[b.who],
+              amountCents: b.amountCents,
+              idempotencyKey: randomUUID(),
+              createdAt: b.createdAt,
+            })),
+          },
+        }),
       },
     });
 
-    // A sala Em andamento precisa do estado no Redis, como o job deixaria ao abrir.
-    if (auction.status === AuctionStatus.RUNNING) await RoomState.open(auction);
+    if (!running) continue;
+    // A sala Em andamento, como o job deixaria ao abrir, com os lances aplicados pelo mesmo
+    // script que a sala usa.
+    await RoomState.open(auction);
+    for (const b of bids) {
+      const result = await RoomState.placeBid({
+        bid: {
+          id: randomUUID(),
+          auctionId: auction.id,
+          bidderId: ids[b.who],
+          bidderName: shortName(USERS[b.who].name),
+          amountCents: b.amountCents,
+          idempotencyKey: randomUUID(),
+          createdAt: b.createdAt.toISOString(),
+        },
+        bidderFullName: USERS[b.who].name,
+        bidderSince: new Date(),
+        now: b.createdAt.getTime(),
+      });
+      if (result.kind === 'accepted') await RoomState.afterAccepted(auction.id, ids[b.who], spec.endsAt.getTime());
+    }
   }
 
   console.log(`Dados de demonstração criados. Senha de todas as contas: ${DEMO_PASSWORD}`);
