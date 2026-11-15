@@ -1,6 +1,6 @@
 import { parseCookie } from 'cookie';
 import Auth from '../../services/Auth.js';
-import User from '../../services/User.js';
+import SessionCache from '../../services/SessionCache.js';
 import type { IoSocket } from '../types.js';
 
 /**
@@ -16,6 +16,7 @@ class SocketAuth {
 
       socket.data.user = user;
       socket.data.sessionVersion = sessionVersion;
+      await SessionCache.warm(user.id, sessionVersion);
       next();
     } catch {
       next(new Error('UNAUTHORIZED'));
@@ -30,7 +31,8 @@ class SocketAuth {
   static async isSessionValid(socket: IoSocket) {
     const { user, sessionVersion } = socket.data;
     if (!user) return false;
-    return !!(await User.findActiveSession(user.id, sessionVersion));
+    // Redis primeiro: durante a disputa o lance não vai ao PostgreSQL.
+    return SessionCache.isValid(user.id, sessionVersion);
   }
 }
 

@@ -7,6 +7,8 @@ import { isRecordNotFound } from '../utils/dbErrors.js';
 import { hash } from '../utils/hash.js';
 import { containsPattern } from '../utils/search.js';
 import { privateUserSelect, publicUserSelect } from '../views/user.js';
+import RoomState from './RoomState.js';
+import SessionCache from './SessionCache.js';
 
 const rethrowNotFound = (err: unknown): never => {
   if (isRecordNotFound(err)) throw new NotFound('Usuário não encontrado');
@@ -78,7 +80,7 @@ class User {
    * Em andamento (cancele antes) ou liderança num leilão Em andamento (o lance é irrevogável).
    */
   static async delete(id: string) {
-    return db.$transaction(async (tx) => {
+    const deleted = await db.$transaction(async (tx) => {
       const [locked] = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM "User" WHERE id = ${id}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
       if (!locked) throw new NotFound('Usuário não encontrado');
@@ -90,7 +92,8 @@ class User {
             status: { in: [AuctionStatus.SCHEDULED, AuctionStatus.RUNNING] },
           },
         }),
-        tx.auction.count({ where: { winnerId: id, status: AuctionStatus.RUNNING } }),
+        // A liderança de uma disputa aberta só existe no Redis (ver RoomState).
+        RoomState.isLeadingAny(id),
       ]);
 
       const blockers: string[] = [];
@@ -114,6 +117,10 @@ class User {
 
       return user;
     });
+
+    // Depois do COMMIT: um socket que ficou aberto não dá mais lance.
+    await SessionCache.revoke(id);
+    return deleted;
   }
 }
 

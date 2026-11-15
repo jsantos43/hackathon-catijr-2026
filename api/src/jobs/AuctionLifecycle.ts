@@ -1,79 +1,74 @@
 import { env } from '../config/env.js';
-import { Prisma } from '../generated/prisma/client.js';
-import type { AuctionStatus } from '../generated/prisma/enums.js';
 import { db } from '../prisma/db.js';
 import Presence from '../services/Presence.js';
-import RoomState, { type AuctionForRoom } from '../services/RoomState.js';
+import RoomState from '../services/RoomState.js';
+import Settlement, { RETURNING, type ChangedAuction } from '../services/Settlement.js';
 import RoomEmitter from '../socket/RoomEmitter.js';
 
-/** Colunas devolvidas pelos UPDATE ... RETURNING abaixo. */
-type ChangedAuction = AuctionForRoom & { status: AuctionStatus };
-
-// Lista fixa de colunas (não vem do usuário), por isso pode entrar com Prisma.raw.
-const RETURNING = Prisma.raw(`id, "ownerId", status::text AS status, "startingPriceCents",
-  "bidCount", "finalPriceCents", "winnerId", "endsAt"`);
+/** Uma sala aberta há mais que isso e sem estado no Redis foi perdida (ver reconcile). */
+const RECONCILE_GRACE_MS = 10_000;
+/** De quantas em quantas rodadas o reconcile roda. */
+const RECONCILE_EVERY_TICKS = 5;
 
 /**
  * Abre e fecha os leilões sozinho, pelo relógio do servidor (RF17/RF18).
  *
- * A cada AUCTION_TICK_MS:
- *   - SCHEDULED -> RUNNING quando chega o startsAt: cria o estado da sala no Redis e avisa a sala;
- *   - RUNNING   -> SOLD (com lances) ou ENDED_NO_BIDS no endsAt: apaga o estado do Redis e avisa.
+ * O PostgreSQL só é tocado nas pontas da disputa:
+ *   - abertura: SCHEDULED -> RUNNING (UPDATE condicional) e a sala é criada no Redis;
+ *   - fechamento: o job pega no Redis as salas cujo prazo passou (ZSET rooms:deadlines),
+ *     reivindica cada uma com um script atômico (RUNNING -> CLOSING) e chama o Settlement,
+ *     que grava lances e resultado numa transação e apaga a sala.
  *
- * Tudo é feito com UPDATE condicional (WHERE status = ...). Se duas instâncias da API rodarem o
- * job ao mesmo tempo, só uma consegue mudar cada leilão, e o RETURNING diz qual foi.
- *
- * Por que lances e fechamento não se atropelam: o lance trava a linha (FOR UPDATE) e pode
- * prorrogar o endsAt. O UPDATE do fechamento espera essa trava e, ao continuar, o PostgreSQL
- * reavalia o WHERE com o endsAt novo, então um leilão recém-prorrogado não é fechado.
+ * Com várias instâncias da API rodando o job: o UPDATE condicional da abertura só funciona
+ * para uma; a reivindicação no Redis é atômica; o settle tem trava e é idempotente.
  */
 class AuctionLifecycle {
   private static timer: NodeJS.Timeout | null = null;
   private static busy = false;
+  private static ticks = 0;
 
   /**
-   * Regra de queda (decisão da equipe). Roda UMA vez na subida, antes do start():
-   *   - leilões que estavam Em andamento quando a API caiu viram Cancelados;
-   *   - leilões agendados cuja janela inteira passou com a API fora também (ninguém pôde dar
-   *     lance neles);
-   *   - presença guardada no Redis é apagada (nenhum socket sobreviveu ao reinício).
+   * Regra de queda. Roda UMA vez na subida, antes do start().
    *
-   * Com AUCTION_CANCEL_RUNNING_ON_BOOT=false (útil em dev), os leilões em andamento continuam,
-   * e o estado das salas é recriado no Redis a partir do banco.
+   *  1. Presença guardada no Redis é apagada (nenhum socket sobreviveu ao reinício).
+   *  2. Salas que já tinham sido decididas antes da queda (CLOSING/CANCELLED no Redis) são
+   *     gravadas normalmente: o término delas chegou com o serviço no ar.
+   *  3. Todo leilão cuja janela já começou (startsAt <= agora) e que não foi finalizado vira
+   *     Cancelado — estava (ou deveria estar) em execução enquanto o serviço estava fora.
+   *     Isso inclui os Em andamento e os Agendados cujo início caiu durante a queda.
+   *     Os lances que estavam no Redis são gravados para o histórico, sem vencedor.
+   *
+   * Com AUCTION_CANCEL_RUNNING_ON_BOOT=false (útil em dev, onde o tsx watch reinicia a API a
+   * cada arquivo salvo) o passo 3 não roda: as salas continuam do ponto em que estavam no Redis.
    */
-  static async recoverFromCrash(now = new Date()) {
+  static async recoverFromCrash(now = new Date()): Promise<ChangedAuction[]> {
     await Presence.clearAll();
 
-    if (!env.AUCTION_CANCEL_RUNNING_ON_BOOT) {
-      const running = await db.auction.findMany({
-        where: { status: 'RUNNING' },
-        select: {
-          id: true,
-          ownerId: true,
-          startingPriceCents: true,
-          bidCount: true,
-          finalPriceCents: true,
-          winnerId: true,
-          endsAt: true,
-        },
-      });
-      for (const auction of running) await RoomState.open(auction);
-      return [];
+    for (const id of await RoomState.allRoomIds()) {
+      const state = await RoomState.get(id);
+      if (state && state.status !== 'RUNNING') await Settlement.settle(id);
     }
 
-    const cancelled = await db.$queryRaw<ChangedAuction[]>`UPDATE "Auction"
-          SET status = 'CANCELLED', "updatedAt" = ${now}
-        WHERE status = 'RUNNING'
-           OR (status = 'SCHEDULED' AND "endsAt" <= ${now})
-       RETURNING ${RETURNING}`;
+    if (!env.AUCTION_CANCEL_RUNNING_ON_BOOT) return [];
 
-    for (const auction of cancelled) await RoomState.clear(auction.id);
+    const interrupted = await db.auction.findMany({
+      where: { status: { in: ['RUNNING', 'SCHEDULED'] }, startsAt: { lte: now } },
+      select: { id: true },
+    });
+
+    const cancelled: ChangedAuction[] = [];
+    for (const { id } of interrupted) {
+      const row = (await RoomState.exists(id))
+        ? await AuctionLifecycle.cancelRoom(id, now)
+        : await AuctionLifecycle.cancelWithoutRoom(id, now, ['RUNNING', 'SCHEDULED']);
+      if (row) cancelled.push(row);
+    }
+
     if (cancelled.length) {
       console.warn(
         `Regra de queda: ${cancelled.length} leilão(ões) interrompido(s) marcado(s) como Cancelado.`,
       );
     }
-
     return cancelled;
   }
 
@@ -88,8 +83,8 @@ class AuctionLifecycle {
       try {
         await RoomState.open(auction);
       } catch (err) {
-        // Sem o Redis o leilão funciona do mesmo jeito: o banco decide cada lance sozinho.
-        console.error(`Erro ao criar o estado da sala ${auction.id} no Redis`, err);
+        // Sem a sala no Redis não há disputa: o reconcile cancela o leilão.
+        console.error(`Erro ao criar a sala ${auction.id} no Redis`, err);
       }
       RoomEmitter.status(auction);
     }
@@ -98,28 +93,69 @@ class AuctionLifecycle {
   }
 
   /**
-   * RUNNING -> SOLD / ENDED_NO_BIDS para os que passaram do endsAt. Durante a disputa,
-   * winnerId e finalPriceCents já guardam o líder e o preço, então basta trocar o status.
+   * Fecha as salas cujo término (com prorrogações) passou: reivindica no Redis e grava no
+   * PostgreSQL. Devolve os leilões que mudaram de estado.
    */
   static async closeDue(now = new Date()) {
-    const closed = await db.$queryRaw<ChangedAuction[]>`UPDATE "Auction"
-          SET status = (CASE WHEN "bidCount" > 0 THEN 'SOLD' ELSE 'ENDED_NO_BIDS' END)::"AuctionStatus",
-              "winnerId" = CASE WHEN "bidCount" > 0 THEN "winnerId" END,
-              "finalPriceCents" = CASE WHEN "bidCount" > 0 THEN "finalPriceCents" END,
-              "updatedAt" = ${now}
-        WHERE status = 'RUNNING' AND "endsAt" <= ${now}
-       RETURNING ${RETURNING}`;
+    const closed: ChangedAuction[] = [];
 
-    for (const auction of closed) {
+    for (const id of await RoomState.dueRooms(now.getTime())) {
       try {
-        await RoomState.clear(auction.id);
+        const claim = await RoomState.claimClose(id, now.getTime());
+        if (claim !== 'CLOSE') continue;
+        const row = await Settlement.settle(id);
+        if (row) closed.push(row);
       } catch (err) {
-        console.error(`Erro ao apagar o estado da sala ${auction.id} do Redis`, err);
+        // A sala fica como está (CLOSING) e a próxima rodada tenta de novo.
+        console.error(`Erro ao fechar o leilão ${id}`, err);
       }
-      RoomEmitter.status(auction);
     }
 
     return closed;
+  }
+
+  /**
+   * Leilões Em andamento no PostgreSQL cuja sala não existe no Redis (o Redis reiniciou sem
+   * persistência, ou a criação da sala falhou): sem os lances não há como decidir o vencedor,
+   * então são cancelados. Também recoloca no índice de prazos as salas que estiverem fora dele.
+   */
+  static async reconcile(now = new Date()) {
+    const running = await db.auction.findMany({
+      where: { status: 'RUNNING', updatedAt: { lt: new Date(now.getTime() - RECONCILE_GRACE_MS) } },
+      select: { id: true },
+    });
+
+    const cancelled: ChangedAuction[] = [];
+    for (const { id } of running) {
+      const state = await RoomState.get(id);
+      if (state) {
+        // Já decidida (ex.: o settle falhou): tenta gravar de novo. Senão só corrige o índice.
+        if (state.status !== 'RUNNING') await Settlement.settle(id);
+        else await RoomState.claimClose(id, 0); // NOT_DUE -> ZADD com o término atual
+        continue;
+      }
+      const row = await AuctionLifecycle.cancelWithoutRoom(id, now, ['RUNNING']);
+      if (row) {
+        console.warn(`Leilão ${id} sem sala no Redis: marcado como Cancelado.`);
+        cancelled.push(row);
+      }
+    }
+    return cancelled;
+  }
+
+  /** Cancela uma sala que está no Redis (forçado) e grava o resultado. */
+  private static async cancelRoom(id: string, now: Date) {
+    await RoomState.cancel(id, now.getTime(), true);
+    return Settlement.settle(id);
+  }
+
+  private static async cancelWithoutRoom(id: string, now: Date, from: ('RUNNING' | 'SCHEDULED')[]) {
+    const [row] = await db.$queryRaw<ChangedAuction[]>`UPDATE "Auction"
+          SET status = 'CANCELLED', "updatedAt" = ${now}
+        WHERE id = ${id}::uuid AND status::text = ANY(${from})
+       RETURNING ${RETURNING}`;
+    if (row) RoomEmitter.status(row);
+    return row ?? null;
   }
 
   /** Uma rodada do job. Se a anterior ainda não terminou, esta é pulada. */
@@ -130,6 +166,8 @@ class AuctionLifecycle {
     try {
       await AuctionLifecycle.openDue(now);
       await AuctionLifecycle.closeDue(now);
+      AuctionLifecycle.ticks += 1;
+      if (AuctionLifecycle.ticks % RECONCILE_EVERY_TICKS === 0) await AuctionLifecycle.reconcile(now);
     } catch (err) {
       console.error('Erro ao abrir/fechar leilões', err);
     } finally {

@@ -3,11 +3,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../../src/app.js';
 import { AuctionStatus } from '../../src/generated/prisma/enums.js';
 import { db } from '../../src/prisma/db.js';
+import Bid from '../../src/services/Bid.js';
 import {
   PASSWORD,
   createAuction,
   createItem,
+  createRunningAuction,
   createUser,
+  newKey,
   resetState,
   sessionCookie,
 } from '../helpers/factories.js';
@@ -99,11 +102,9 @@ describe('DELETE /user', () => {
     expect(res.body.details.join(' ')).toMatch(/agendados ou em andamento/);
 
     const bidder = await createUser();
-    const running = await createAuction(owner.id);
-    await db.auction.update({
-      where: { id: running.id },
-      data: { winnerId: bidder.id, bidCount: 1, finalPriceCents: 10_000 },
-    });
+    // A liderança só existe no Redis enquanto a disputa corre.
+    const running = await createRunningAuction(owner.id);
+    await Bid.place({ auctionId: running.id, bidder, amountCents: 10_000, idempotencyKey: newKey() });
     const lead = await request(app).delete('/user').set('Cookie', sessionCookie(bidder.id)).expect(422);
     expect(lead.body.details.join(' ')).toMatch(/liderando/);
   });

@@ -3,7 +3,11 @@
 Guia de estado do projeto para pessoas e agentes de código. **Atualize este arquivo sempre que
 uma rota, evento ou regra mudar** — principalmente a seção [O que falta fazer](#o-que-falta-fazer).
 
-> Última atualização: 14/11/2026 (noite) — Nível 2 completo: busca de comitentes (RF22), filtro por estado e
+> Última atualização: 14/11/2026 (madrugada) — **sala só no Redis**: durante a disputa os lances vivem
+> apenas no Redis (scripts Lua atômicos) e vão para o PostgreSQL de uma vez no fechamento
+> (`services/Settlement.ts`); regra de queda por `startsAt`; deploy simplificado (sem swap, sem MinIO).
+>
+> Antes: 14/11/2026 (noite) — Nível 2 completo: busca de comitentes (RF22), filtro por estado e
 > busca sem acentos (RF21), conta (nome/excluir), edição de item com ordem das fotos/capa, ordem dos itens do
 > lote, seed de demonstração (RNF04), mensagens da API em português, e2e com Playwright. Infra para VM de
 > 1 vCPU / 1 GB: fotos no disco (MinIO removido), imagens construídas no GitHub Actions, limites de memória.
@@ -20,9 +24,9 @@ disputa os lances são transmitidos em tempo real para todos na sala.
 | Camada | Tecnologia | Pasta | Estado |
 |---|---|---|---|
 | API REST | Node 24, Express 5, Zod 4, TypeScript | `api/` | Completa (ver [O que falta](#o-que-falta-fazer)) |
-| Banco | PostgreSQL 17 + Prisma 7 | `api/src/prisma/` | Usuário, Item, Leilão, Itens do leilão, **Lance** |
+| Banco | PostgreSQL 17 + Prisma 7 | `api/src/prisma/` | Usuário, Item, Leilão, Itens do leilão, **Lance** (gravados no fechamento) |
 | Tempo real | Socket.IO 4 + `@socket.io/redis-adapter` | `api/src/socket/` | join (com snapshot), leave, role, bid, status, presence |
-| Estado quente da sala | Redis 7 (ioredis) | `api/src/redis/`, `services/RoomState.ts` | Estado da sala, idempotência, anti-rajada, presença, rate limit |
+| Sala Em andamento | Redis 7 (ioredis, AOF) | `api/src/redis/`, `services/RoomState.ts`, `services/Settlement.ts` | Estado, **todos os lances**, idempotência, prazos, presença, sessão, rate limit |
 | Testes da API | Vitest 3 + Supertest + socket.io-client | `api/tests/` | 87 testes (unitários + integração com Postgres/Redis reais) |
 | Testes e2e | Playwright (Chromium) | `app/e2e/` | Jornada de lance com 4 navegadores (RF04, RF09, RF10, RF24, RF25, RF26) |
 | Fotos | Disco da VM (volume `uploads`), servidas pelo nginx | `api/src/utils/storage.ts` | Pronto |
@@ -32,24 +36,26 @@ disputa os lances são transmitidos em tempo real para todos na sala.
 Requisitos originais: `Requisitos_Leilao_Hackathon.pdf` (é imagem; os códigos RFxx citados no
 código e no design vêm dele).
 
-### Arquitetura pretendida (decisão da equipe)
+### Arquitetura (decisão da equipe)
 
 ```
-navegador ──HTTP (cookies httpOnly)──▶ API Express ──▶ PostgreSQL (fonte da verdade, histórico)
+navegador ──HTTP (cookies httpOnly)──▶ API Express ──▶ PostgreSQL (histórico permanente; recebe a disputa no fim)
     │                                     │
-    └──────Socket.IO (mesmo cookie)───────┤──▶ Redis (estado da sala enquanto ela está aberta:
-                                          │     preço atual, líder, lance mínimo, término,
-                                          │     presença, chaves de idempotência, anti-rajada)
+    └──────Socket.IO (mesmo cookie)───────┤──▶ Redis (a sala Em andamento INTEIRA: estado, todos os lances,
+                                          │     idempotência, prazos, presença, sessão, anti-rajada)
                                           └──▶ disco (fotos; nginx serve /uploads)
 ```
 
-- **PostgreSQL** guarda tudo que é permanente (leilões, itens, lances aceitos, resultado).
-- **Redis** guarda o estado da sala **só enquanto o leilão está Em andamento**.
-- **Socket.IO** transmite lances e mudanças de estado. A sala só muda depois que o lance foi gravado.
-- **Regra de queda (decisão da equipe):** se o serviço cair durante a execução de salas, os
-  leilões que estavam Em andamento são marcados **Cancelados** quando o sistema volta
-  (`AuctionLifecycle.recoverFromCrash()`, roda antes do job). Desligável em dev com
-  `AUCTION_CANCEL_RUNNING_ON_BOOT=false`.
+- **Durante a disputa só o Redis é usado.** Cada lance é um script Lua atômico (`RoomState.placeBid`).
+  O PostgreSQL só é tocado na abertura (SCHEDULED → RUNNING) e no fechamento.
+- **Fechamento** (`Settlement.settle`): sala reivindicada no Redis (RUNNING → CLOSING/CANCELLED), uma
+  transação grava todos os lances e o resultado, e só depois a sala é apagada do Redis. Idempotente.
+- **Leituras** de leilões Em andamento (REST e snapshot) aplicam o estado do Redis por cima do banco
+  (`RoomState.withLive`).
+- **Regra de queda:** na subida, todo leilão Agendado/Em andamento com `startsAt <= agora` vira
+  **Cancelado** (`AuctionLifecycle.recoverFromCrash()`); salas já decididas antes da queda são gravadas
+  normalmente. Desligável em dev com `AUCTION_CANCEL_RUNNING_ON_BOOT=false` (a sala segue no Redis).
+- Leilão RUNNING no banco sem sala no Redis (Redis perdeu os dados) é cancelado pelo `reconcile()`.
 
 ---
 
@@ -88,14 +94,13 @@ Para a demo, use leilões curtos: no `api/.env`, `AUCTION_MIN_LEAD_SECONDS=60` e
   `api/Dockerfile` e `app/Dockerfile` no GitHub e publica no GHCR (tag = commit); job `deploy` entra por
   SSH (`SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_PORT`, `DEPLOY_PATH`, `PUBLIC_URL`), faz login
   temporário no GHCR e roda `deploy.sh` com `API_IMAGE`/`APP_IMAGE`.
-- `deploy.sh`: `git reset --hard`, cria swap de 1 GB se não houver, cria/completa o `.env`, **pull** das
-  imagens (sem elas, constrói na VM uma por vez), `up -d --no-build` e, uma única vez, importa as fotos
-  do MinIO antigo (`scripts/import-minio-photos`, marca `.photos-imported`).
-- `compose.prod.yml`: Postgres ajustado para pouca RAM (shared_buffers 64 MB, 20 conexões), Redis sem
-  persistência (só estado temporário), limites de memória por serviço, logs com rotação. O nginx
+- `deploy.sh`: `git reset --hard`, cria o `.env` na primeira vez, **pull** das imagens (`API_IMAGE`/`APP_IMAGE`
+  obrigatórias; nunca constrói na VM) e `up -d --no-build`. O swap é configurado à mão na VM.
+- `compose.prod.yml`: Postgres ajustado para pouca RAM (shared_buffers 64 MB, 20 conexões), Redis com
+  AOF (`everysec`, volume `redis_data` — os lances da disputa só existem lá), limites de memória por serviço, logs com rotação. O nginx
   (**8080**) serve a SPA, `/uploads` (volume compartilhado, só leitura) e faz proxy de `/user`, `/auth`,
   `/item`, `/auction`, `/health` e `/socket.io`. A API confia no `X-Forwarded-For` (`TRUST_PROXY`) para o
-  rate limit ver o IP real. MinIO só existe no profile `legado`.
+  rate limit ver o IP real.
 - Medido localmente com a stack de produção: ≈ 115 MB em repouso (api 75, postgres 23, redis 9, nginx 7).
 
 ---
@@ -107,10 +112,12 @@ Para a demo, use leilões curtos: no `api/.env`, `AUCTION_MIN_LEAD_SECONDS=60` e
 - **Item**: `id, ownerId, name, description, category, images[]` (chaves `items/<id>/<uuid>.<ext>` relativas a `UPLOADS_DIR`; a API devolve URLs públicas). A ordem é a ordem de exibição (a primeira é a capa).
 - **Auction** (um *lote*): `id, ownerId, title, description, status, startingPriceCents, bidCount,
   startsAt, originalEndsAt, endsAt, winnerId, finalPriceCents`.
-  - Em andamento: `winnerId`/`finalPriceCents` = **líder e preço atuais**. Depois: vencedor e valor pago.
+  - Em andamento: no banco ficam como na abertura (`bidCount` 0, `winnerId` null); o líder e o preço atuais
+    estão no Redis e as respostas da API já os trazem. Depois: vencedor e valor pago.
 - **AuctionItem**: liga leilão ↔ item com `position` (o primeiro é a capa). Um leilão pode ter até 10 itens.
-- **Bid**: `id, auctionId, bidderId, amountCents, idempotencyKey, createdAt`. Só lances **aceitos**.
-  `@@unique([bidderId, idempotencyKey])` garante que reenvio não duplica nem se o Redis cair.
+- **Bid**: `id, auctionId, bidderId, amountCents, idempotencyKey, createdAt`. Só lances **aceitos**, gravados
+  no fechamento a partir da lista do Redis (o `id` é gerado no lance). `@@unique([bidderId, idempotencyKey])`
+  + `skipDuplicates` tornam o settle repetível.
 - Respostas de leilão trazem `winner: { id, name } | null` (líder atual / vencedor).
 - **Enums**: `AuctionStatus = SCHEDULED | RUNNING | SOLD | ENDED_NO_BIDS | CANCELLED`;
   `Category = ELECTRONICS | FASHION | HOME | VEHICLES | ART | COLLECTIBLES | SPORTS | BOOKS | OTHER`
@@ -169,14 +176,14 @@ Login e cadastro têm rate limit por IP no Redis (`AUTH_RATE_LIMIT_MAX` por `AUT
 
 ### Ciclo de vida (`api/src/jobs/AuctionLifecycle.ts`)
 Na subida: `recoverFromCrash()` (regra de queda). Depois, a cada `AUCTION_TICK_MS` (1 s):
-`SCHEDULED → RUNNING` quando chega `startsAt` (cria `room:<id>:state` no Redis); `RUNNING → SOLD`
-(com lances) ou `ENDED_NO_BIDS` no `endsAt` (apaga o estado do Redis). UPDATEs condicionais
-(idempotente, seguro com várias instâncias). Emite `auction:status` para a sala.
+`SCHEDULED → RUNNING` quando chega `startsAt` (UPDATE condicional + cria a sala no Redis); salas de
+`rooms:deadlines` cujo término passou são reivindicadas (`CLAIM_CLOSE`) e gravadas pelo `Settlement`
+(`SOLD` com lances, `ENDED_NO_BIDS` sem). A cada 5 rodadas, `reconcile()`. Emite `auction:status`.
 
 ### Socket.IO (`api/src/socket/`, contrato em `contract.ts`)
 - Handshake exige o cookie `accessToken` (erro `UNAUTHORIZED`). Cada lance reconfere a sessão.
 - `auction:join`, `auction:leave`, `auction:role`, `auction:bid` — contrato completo na seção 6.
-- Servidor emite `auction:status`, `auction:bid` (depois do COMMIT) e `auction:presence`.
+- Servidor emite `auction:status`, `auction:bid` (depois de gravado na sala, no Redis) e `auction:presence`.
 - Adapter do Redis: com várias instâncias da API, o emit chega a todas.
 
 ### Regras de negócio já implementadas
@@ -186,10 +193,11 @@ Na subida: `recoverFromCrash()` (regra de queda). Depois, a cada `AUCTION_TICK_M
   acrescentar texto; Finalizado = nada.
 - **Cancelamento (RF08)**: agendado ou em andamento **sem lances**; nunca apaga.
 - **Relistagem (RF28)**: item não pode estar em dois leilões abertos nem ter sido vendido.
-- Locks `SELECT … FOR UPDATE` em item/leilão para evitar corrida. **Lance, cancelamento, edição e
-  fechamento travam a mesma linha do leilão**, então nunca se atropelam.
-- **Lance**: idempotência (Redis + índice único), anti-rajada (`BID_THROTTLE_MS`), pré-validação no
-  Redis, decisão final no Postgres. Fluxo completo em `api/README.md` seção 3.
+- Locks `SELECT … FOR UPDATE` em item/leilão para criação/edição/cancelamento de agendados.
+- **Lance, fechamento e cancelamento de leilão Em andamento** são scripts Lua na mesma sala do Redis:
+  o Redis os executa um por vez, então nunca se atropelam.
+- **Lance**: idempotência (`room:{id}:idem`, gravada no mesmo script que aceita), anti-rajada
+  (`BID_THROTTLE_MS`), sessão conferida no Redis (`session:<id>`). Fluxo completo em `api/README.md` seção 3.
 
 ---
 
@@ -286,7 +294,7 @@ encerrar sem lances e cancelar.
 
 ### Back-end
 - [x] Tabela `Bid` + migration `20261114210417_bids`.
-- [x] Handler `auction:bid` (validações, lock `FOR UPDATE`, prorrogação, broadcast depois do COMMIT).
+- [x] Handler `auction:bid` (script Lua atômico no Redis, prorrogação, broadcast depois de gravado na sala).
 - [x] Redis: `REDIS_URL` validado, estado quente da sala, idempotência com TTL, anti-rajada, presença,
       `@socket.io/redis-adapter`.
 - [x] Regra de queda na subida (`recoverFromCrash`), antes do job.
@@ -306,13 +314,16 @@ encerrar sem lances e cancelar.
 - [x] Seed de demonstração (`npm run db:seed`, `--sala`, `--reset`) — RNF04.
 - [x] Fotos no disco (multer grava no `.tmp` e o service renomeia; nada de foto inteira em RAM).
 - [x] `trust proxy` (rate limit de login via nginx usava o IP do nginx para todo mundo).
+- [x] **Sala só no Redis**: lances não tocam o PostgreSQL durante a disputa; settle no fechamento.
 - [ ] **Regra de queda × RN01**: cancelar no boot um leilão Em andamento **com lances** contraria
       RN01 (“Em andamento com lance só pode terminar Vendido”) e a transição 3 (“Em andamento → Cancelado
       só sem lance”). RF18 pede que, ao voltar, o que passou do término feche normalmente. Decidir com a
       equipe; a alternativa é `AUCTION_CANCEL_RUNNING_ON_BOOT=false` (a sala é recriada a partir do banco).
 - [ ] `sort=price` ordena em memória (ok para centenas de leilões); com muito volume, criar coluna de preço atual.
 - [ ] Várias instâncias da API: a regra de queda roda em cada subida e cancelaria salas atendidas
-      por outra instância. Para escalar horizontalmente, trocar por um "heartbeat" por instância.
+      por outra instância. Para escalar horizontalmente, trocar por um "heartbeat" do cluster no Redis
+      (só cancela se nenhuma instância estava viva). Os relógios das instâncias precisam de NTP.
+- [ ] `sort=ends` usa o `endsAt` do banco, que não tem as prorrogações da sala (diferença de minutos).
 
 ### Front-end
 - [x] Sala ligada ao `auction:bid` real, snapshot no join, papel preservado ao reconectar.
@@ -329,8 +340,8 @@ encerrar sem lances e cancelar.
 
 ### Infra / entrega
 - [x] `.env` de produção, segredos e deploy automático (GitHub Actions + `deploy.sh` + `compose.prod.yml`).
-- [x] Fotos no disco da VM (RF07 foi riscado); MinIO removido (profile `legado` só para importar).
-- [x] Imagens construídas no GitHub Actions (GHCR); VM só faz pull. Swap, limites de memória, logs com rotação.
+- [x] Fotos no disco da VM (RF07 foi riscado); MinIO removido de vez (sem importação).
+- [x] Imagens construídas no GitHub Actions (GHCR); VM só faz pull. Limites de memória, logs com rotação.
 - [ ] TLS/domínio (bônus 7.2): pôr um proxy com HTTPS (ex.: Caddy) na frente do nginx.
 - [ ] Preencher a URL pública no README.
 - [x] README raiz com instruções de dev e deploy.
@@ -338,14 +349,13 @@ encerrar sem lances e cancelar.
 ---
 
 ## Divergências conhecidas
-1. ~~Queda do serviço~~ — resolvido: a API cancela os leilões Em andamento ao subir.
+1. ~~Queda do serviço~~ — resolvido: a API cancela, ao subir, os leilões cuja janela já começou.
 2. **Lote vs. item**: o design pressupõe 1 item por leilão; a API modela *lotes* (vários itens). O front
    suporta os dois (galeria junta as fotos de todos os itens; capa = primeiro item).
 3. **Limites**: duração mínima design 3 min / API 60 s (env). Fotos alinhadas em 3–8.
-4. O commit `f892760` tinha uma versão da sala com lances só no Redis (script Lua, eventos `bid:place` /
-   `auction:state`). Foi substituída pela arquitetura acima (Postgres decide, Redis acelera) para seguir a
-   decisão da equipe e o contrato que o front consome. Chaves antigas `auction:<id>:*` no Redis de dev
-   podem ser apagadas sem problema.
+4. A sala voltou a ser só Redis (decisão da equipe), mantendo o contrato de eventos que o front consome
+   (`auction:bid`, `auction:status`, snapshot no join). Chaves antigas `room:<id>:*` (sem `{}`) e
+   `bid:idem:*` no Redis de dev podem ser apagadas.
 
 ## Convenções
 - Código e comentários em português; nomes de variáveis em inglês.

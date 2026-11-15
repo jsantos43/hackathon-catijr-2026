@@ -27,7 +27,7 @@ class BidHandler {
 
       const outcome = await Bid.place({
         auctionId,
-        userId: socket.data.user.id,
+        bidder: socket.data.user,
         amountCents,
         idempotencyKey,
       });

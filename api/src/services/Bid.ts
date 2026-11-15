@@ -1,15 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import { env } from '../config/env.js';
 import { NotFound } from '../errors/index.js';
 import { AuctionStatus } from '../generated/prisma/enums.js';
 import { db } from '../prisma/db.js';
 import { redis } from '../redis/client.js';
 import { RedisKeys } from '../redis/keys.js';
-import { uniqueViolationField } from '../utils/dbErrors.js';
-import { extendEndsAt } from '../utils/extension.js';
 import { minimumBidCents } from '../utils/money.js';
+import { shortName } from '../utils/names.js';
 import { auctionSelect, serializeAuction, type AuctionView } from '../views/auction.js';
 import { bidSelect, serializeBid, type BidView } from '../views/bid.js';
-import RoomState, { type AuctionForRoom } from './RoomState.js';
+import RoomState, { type StoredBid } from './RoomState.js';
 
 // ---------------------------------------------------------------------------------------------
 // Tipos do resultado de um lance (é exatamente o que vai no ack do socket `auction:bid`).
@@ -69,7 +69,8 @@ export type BidOutcome = BidAccepted | BidRejected;
 
 export type PlaceBidInput = {
   auctionId: string;
-  userId: string;
+  /** Quem dá o lance (vem da sessão do socket: o nome vai abreviado na lista da sala). */
+  bidder: { id: string; name: string; createdAt: Date };
   amountCents: number;
   idempotencyKey: string;
 };
@@ -101,35 +102,41 @@ export const participationSituation = (
 // Auxiliares internos
 // ---------------------------------------------------------------------------------------------
 
-/** Linha do leilão lida com SELECT ... FOR UPDATE. */
-type LockedAuction = AuctionForRoom & {
-  status: AuctionStatus;
-  originalEndsAt: Date;
-};
-
 const toPayload = (bid: BidView): BidPayload => ({ ...bid, createdAt: bid.createdAt.toISOString() });
 
-const accepted = (
-  bid: BidView,
-  auction: AuctionForRoom,
-  extended: boolean,
-  duplicate = false,
-): BidAccepted => ({
-  ok: true,
-  bid: toPayload(bid),
-  auction: {
-    finalPriceCents: auction.finalPriceCents ?? bid.amountCents,
-    minimumBidCents: minimumBidCents(auction),
-    bidCount: auction.bidCount,
-    endsAt: auction.endsAt.toISOString(),
-    winnerId: auction.winnerId ?? bid.bidderId,
-  },
-  extended,
-  ...(duplicate && { duplicate: true }),
+/** Lance da lista do Redis no formato da API (sem a chave de idempotência). */
+const fromStored = ({ idempotencyKey: _key, createdAt, ...bid }: StoredBid): BidView => ({
+  ...bid,
+  createdAt: new Date(createdAt),
 });
 
-/** Monta a resposta de um lance que já existe no banco (reenvio com a mesma chave). */
-const replayExisting = async (userId: string, idempotencyKey: string) => {
+/**
+ * Converte o registro devolvido pelo script de lance (o mesmo guardado na idempotência):
+ * "<bidCount>|<endsAt>|<lanceMínimoSeguinte>|<prorrogou>|<lance JSON>".
+ */
+const fromRecord = (record: string, duplicate = false): BidAccepted => {
+  const [count, endsAt, minimum, extended, ...rest] = record.split('|');
+  const bid = JSON.parse(rest.join('|')) as StoredBid;
+  return {
+    ok: true,
+    bid: toPayload(fromStored(bid)),
+    auction: {
+      finalPriceCents: bid.amountCents,
+      minimumBidCents: Number(minimum),
+      bidCount: Number(count),
+      endsAt: new Date(Number(endsAt)).toISOString(),
+      winnerId: bid.bidderId,
+    },
+    extended: extended === '1',
+    ...(duplicate && { duplicate: true }),
+  };
+};
+
+/**
+ * Reenvio de um lance de um leilão que já foi gravado no PostgreSQL (a sala não está mais no
+ * Redis). Só leitura: o leilão já acabou.
+ */
+const replayFromDatabase = async (userId: string, idempotencyKey: string): Promise<BidAccepted | null> => {
   const existing = await db.bid.findUnique({
     where: { bidderId_idempotencyKey: { bidderId: userId, idempotencyKey } },
     select: { ...bidSelect, auction: { select: auctionSelect } },
@@ -137,86 +144,20 @@ const replayExisting = async (userId: string, idempotencyKey: string) => {
   if (!existing) return null;
 
   const { auction, ...bid } = existing;
-  return accepted(serializeBid(bid), auction, false, true);
+  return {
+    ok: true,
+    bid: toPayload(serializeBid(bid)),
+    auction: {
+      finalPriceCents: auction.finalPriceCents ?? bid.amountCents,
+      minimumBidCents: minimumBidCents(auction),
+      bidCount: auction.bidCount,
+      endsAt: auction.endsAt.toISOString(),
+      winnerId: auction.winnerId ?? bid.bidderId,
+    },
+    extended: false,
+    duplicate: true,
+  };
 };
-
-const remember = (input: PlaceBidInput, outcome: BidOutcome) =>
-  redis.set(
-    RedisKeys.bidIdempotency(input.userId, input.idempotencyKey),
-    JSON.stringify(outcome),
-    'EX',
-    env.BID_IDEMPOTENCY_TTL_SECONDS,
-  );
-
-/**
- * A parte que decide, dentro de uma transação do PostgreSQL. A linha do leilão fica travada
- * (FOR UPDATE) do começo ao fim: dois lances no mesmo leilão são processados um depois do
- * outro, e o segundo já enxerga o preço, o líder e o término deixados pelo primeiro. O mesmo
- * vale para o cancelamento e para o fechamento do leilão, que travam a mesma linha.
- */
-const placeInTransaction = (
-  input: PlaceBidInput,
-): Promise<{ outcome: BidOutcome; room?: AuctionForRoom }> =>
-  db.$transaction(async (tx) => {
-    const [auction] = await tx.$queryRaw<LockedAuction[]>`
-      SELECT id, "ownerId", status::text AS status, "startingPriceCents", "bidCount", "finalPriceCents",
-             "winnerId", "endsAt", "originalEndsAt"
-        FROM "Auction"
-       WHERE id = ${input.auctionId}::uuid
-         FOR UPDATE`;
-
-    // O horário que vale é o do servidor, no momento em que o lance é processado.
-    const now = new Date();
-
-    if (!auction || auction.status !== AuctionStatus.RUNNING || now >= auction.endsAt) {
-      return { outcome: reject('AUCTION_NOT_RUNNING', auction ? minimumBidCents(auction) : null) };
-    }
-
-    const minimum = minimumBidCents(auction);
-    if (auction.ownerId === input.userId) return { outcome: reject('IS_OWNER', minimum) };
-    if (auction.bidCount > 0 && auction.winnerId === input.userId) {
-      return { outcome: reject('ALREADY_LEADER', minimum) };
-    }
-    if (input.amountCents < minimum) return { outcome: reject('BID_TOO_LOW', minimum) };
-
-    const extension = extendEndsAt({
-      bidAt: now,
-      endsAt: auction.endsAt,
-      originalEndsAt: auction.originalEndsAt,
-    });
-
-    const bid = await tx.bid.create({
-      data: {
-        auctionId: auction.id,
-        bidderId: input.userId,
-        amountCents: input.amountCents,
-        idempotencyKey: input.idempotencyKey,
-        createdAt: now,
-      },
-      select: bidSelect,
-    });
-
-    // Durante a disputa, winnerId/finalPriceCents são o líder e o preço atuais.
-    const updated: AuctionForRoom = {
-      ...auction,
-      bidCount: auction.bidCount + 1,
-      finalPriceCents: input.amountCents,
-      winnerId: input.userId,
-      endsAt: extension.endsAt,
-    };
-
-    await tx.auction.update({
-      where: { id: auction.id },
-      data: {
-        bidCount: updated.bidCount,
-        finalPriceCents: updated.finalPriceCents,
-        winnerId: updated.winnerId,
-        endsAt: updated.endsAt,
-      },
-    });
-
-    return { outcome: accepted(serializeBid(bid), updated, extension.extended), room: updated };
-  });
 
 // ---------------------------------------------------------------------------------------------
 // Serviço
@@ -224,74 +165,78 @@ const placeInTransaction = (
 
 class Bid {
   /**
-   * Processa um lance (RF10–RF15). Ordem das etapas, da mais barata para a mais cara:
+   * Processa um lance (RF10–RF15) usando SÓ o Redis. Etapas:
    *
-   *  1. Idempotência (Redis, depois banco): a mesma chave devolve o resultado original.
-   *  2. Anti-rajada (Redis): no máximo um lance a cada BID_THROTTLE_MS por usuário.
-   *  3. Pré-validação (Redis): recusa na hora o que com certeza seria recusado.
-   *  4. Transação no PostgreSQL: valida tudo de novo com a linha travada e grava.
-   *  5. Atualiza o estado quente da sala no Redis e guarda o resultado pela chave.
+   *  1. Idempotência (caminho rápido): a mesma chave devolve o resultado original. Resolve o
+   *     duplo clique e o reenvio depois de a conexão cair antes do ack.
+   *  2. Anti-rajada: no máximo um lance a cada BID_THROTTLE_MS por usuário (SET NX PX).
+   *  3. Script Lua atômico na sala: confere de novo a idempotência, status, término (relógio
+   *     do servidor), comitente, líder e mínimo; aplica prorrogação; grava estado, lance e
+   *     resultado. Dois lances simultâneos são executados um depois do outro pelo Redis.
+   *  4. Índices globais (prazo de fechamento e "minhas participações").
    *
-   * Quem chama (o handler do socket) transmite o lance para a sala quando `ok` for true e
-   * não for `duplicate`.
+   * O PostgreSQL só recebe os lances quando o leilão termina (services/Settlement.ts).
+   * Quem chama (o handler do socket) transmite o lance para a sala quando `ok` for true e não
+   * for `duplicate`.
    */
   static async place(input: PlaceBidInput): Promise<BidOutcome> {
+    const { auctionId, bidder, amountCents, idempotencyKey } = input;
+
     // 1. Idempotência
-    const cached = await redis.get(RedisKeys.bidIdempotency(input.userId, input.idempotencyKey));
-    if (cached) {
-      const outcome = JSON.parse(cached) as BidOutcome;
-      return outcome.ok ? { ...outcome, duplicate: true } : outcome;
+    const cached = await RoomState.findIdempotent(auctionId, bidder.id, idempotencyKey);
+    if (cached) return fromRecord(cached, true);
+
+    // Sala fora do Redis: ou o leilão não está aberto, ou já foi gravado no banco e isto é o
+    // reenvio de um lance de lá (só leitura; o leilão acabou).
+    if (!(await RoomState.exists(auctionId))) {
+      return (await replayFromDatabase(bidder.id, idempotencyKey)) ?? reject('AUCTION_NOT_RUNNING');
     }
-    const replay = await replayExisting(input.userId, input.idempotencyKey);
-    if (replay) return replay;
 
-    const state = await RoomState.get(input.auctionId);
-
-    // 2. Anti-rajada: SET NX PX só funciona para o primeiro lance dentro da janela.
+    // 2. Anti-rajada (reenvio com a mesma chave já voltou acima, então não conta aqui).
     if (env.BID_THROTTLE_MS > 0) {
-      const first = await redis.set(
-        RedisKeys.bidThrottle(input.userId),
-        '1',
-        'PX',
-        env.BID_THROTTLE_MS,
-        'NX',
-      );
-      // Não guarda pela chave: depois da janela, o mesmo lance pode ser reenviado.
-      if (!first) return reject('RATE_LIMITED', state?.minimumBidCents ?? null);
+      const first = await redis.set(RedisKeys.bidThrottle(bidder.id), '1', 'PX', env.BID_THROTTLE_MS, 'NX');
+      if (!first) return reject('RATE_LIMITED');
     }
 
-    // 3. Pré-validação pelo Redis (se a sala não estiver lá, o banco decide sozinho).
-    if (state) {
-      const rejection = RoomState.precheck(state, input);
-      if (rejection) {
-        const outcome = reject(rejection, state.minimumBidCents);
-        await remember(input, outcome);
-        return outcome;
+    // 3. Decisão atômica no Redis. O horário que vale é o do servidor, agora.
+    const now = Date.now();
+    const result = await RoomState.placeBid({
+      bid: {
+        id: randomUUID(),
+        auctionId,
+        bidderId: bidder.id,
+        bidderName: shortName(bidder.name),
+        amountCents,
+        idempotencyKey,
+        createdAt: new Date(now).toISOString(),
+      },
+      bidderFullName: bidder.name,
+      bidderSince: bidder.createdAt,
+      now,
+    });
+
+    if (result.kind === 'duplicate') return fromRecord(result.record, true);
+    if (result.kind === 'rejected') {
+      // Sem sala no Redis: pode ser o reenvio de um lance de um leilão que já terminou.
+      if (result.error === 'AUCTION_NOT_RUNNING' && result.minimumBidCents === null) {
+        const replay = await replayFromDatabase(bidder.id, idempotencyKey);
+        if (replay) return replay;
       }
+      return reject(result.error, result.minimumBidCents);
     }
 
-    // 4. Decisão final no PostgreSQL.
-    let result: Awaited<ReturnType<typeof placeInTransaction>>;
-    try {
-      result = await placeInTransaction(input);
-    } catch (err) {
-      // Duas tentativas com a mesma chave ao mesmo tempo: a segunda bate no índice único.
-      if (uniqueViolationField(err) !== undefined) {
-        const again = await replayExisting(input.userId, input.idempotencyKey);
-        if (again) return again;
-      }
-      throw err;
-    }
-
-    // 5. Redis acompanha o banco (só depois do COMMIT).
-    if (result.room) await RoomState.update(result.room);
-    await remember(input, result.outcome);
-
-    return result.outcome;
+    // 4. Índices fora da sala.
+    const outcome = fromRecord(result.record);
+    await RoomState.afterAccepted(auctionId, bidder.id, Date.parse(outcome.auction.endsAt));
+    return outcome;
   }
 
   /** Últimos lances de um leilão, do mais recente para o mais antigo (RF09). */
-  static async listRecent(auctionId: string, limit = env.AUCTION_RECENT_BIDS_LIMIT) {
+  static async listRecent(auctionId: string, limit = env.AUCTION_RECENT_BIDS_LIMIT): Promise<BidView[]> {
+    // Em andamento: os lances estão só no Redis.
+    const live = await RoomState.recentBids(auctionId, limit);
+    if (live) return live.map(fromStored);
+
     const bids = await db.bid.findMany({
       where: { auctionId },
       select: bidSelect,
@@ -315,18 +260,27 @@ class Bid {
    * situação (Líder, Superado, Vencedor, Não venceu). Os ao vivo vêm primeiro.
    */
   static async listParticipations(userId: string) {
-    const mine = await db.bid.groupBy({
-      by: ['auctionId'],
-      where: { bidderId: userId },
-      _max: { amountCents: true },
-    });
-    if (!mine.length) return [];
+    // Leilões encerrados: lances no PostgreSQL. Em andamento: só no Redis.
+    const [mine, liveBids] = await Promise.all([
+      db.bid.groupBy({
+        by: ['auctionId'],
+        where: { bidderId: userId },
+        _max: { amountCents: true },
+      }),
+      RoomState.participationsOf(userId),
+    ]);
 
     const myHighest = new Map(mine.map((g) => [g.auctionId, g._max.amountCents ?? 0]));
-    const auctions = await db.auction.findMany({
+    for (const [auctionId, amount] of liveBids) {
+      myHighest.set(auctionId, Math.max(amount, myHighest.get(auctionId) ?? 0));
+    }
+    if (!myHighest.size) return [];
+
+    const rows = await db.auction.findMany({
       where: { id: { in: [...myHighest.keys()] } },
       select: auctionSelect,
     });
+    const auctions = await RoomState.withLive(rows);
 
     const participations = auctions.map((row) => ({
       auction: serializeAuction(row) as AuctionView,
