@@ -14,7 +14,8 @@ import { UPLOADS_ROOT } from './utils/storage.js';
  */
 export const app = express();
 
-// Atrás do nginx: req.ip passa a ser o IP real do cliente (rate limit de login por IP).
+// Atrás do nginx: req.ip passa a ser o IP real do cliente (rate limit de login por IP) e
+// req.secure reflete o protocolo real (X-Forwarded-Proto), usado no atributo `secure` dos cookies.
 app.set('trust proxy', env.TRUST_PROXY);
 
 // Fotos. Em produção o nginx responde /uploads antes de chegar aqui; em dev, a API serve.

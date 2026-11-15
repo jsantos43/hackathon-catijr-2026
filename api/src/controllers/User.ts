@@ -67,7 +67,7 @@ class User {
       if (!req.user) throw new Unauthorized();
 
       const user = await Service.delete(req.user.id);
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
 
       return res.status(200).json({ success: true, user });
     } catch (err) {

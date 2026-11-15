@@ -16,7 +16,7 @@ class Auth {
         req.body.password,
       );
 
-      setAuthCookies(res, { accessToken, refreshToken });
+      setAuthCookies(req, res, { accessToken, refreshToken });
 
       return res.status(200).json({ success: true, user });
     } catch (err) {
@@ -28,11 +28,11 @@ class Auth {
     try {
       const tokens = await Service.refresh(req.cookies?.['refreshToken']);
 
-      setAuthCookies(res, tokens);
+      setAuthCookies(req, res, tokens);
 
       return res.status(200).json({ success: true });
     } catch (err) {
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
       return next(err);
     }
   }
@@ -42,7 +42,7 @@ class Auth {
       if (!req.user || req.sessionVersion === undefined) throw new Unauthorized();
 
       await Service.logout(req.user.id, req.sessionVersion);
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
 
       return res.status(200).json({ success: true });
     } catch (err) {
