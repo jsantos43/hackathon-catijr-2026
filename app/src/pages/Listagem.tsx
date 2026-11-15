@@ -11,8 +11,18 @@ import { errorMessage } from '../services/api';
 import { auctionService, type AuctionSort } from '../services/auctionService';
 import type { Auction, AuctionStatus, Category } from '../types';
 
-/** A vitrine sempre mostra os abertos: primeiro os Em andamento, depois os Agendados. */
+/** Por padrão a vitrine mostra os abertos: primeiro os Em andamento, depois os Agendados. */
 const OPEN_STATUSES: AuctionStatus[] = ['RUNNING', 'SCHEDULED'];
+
+/** RF21: filtro por estado, combinável com busca e categorias. */
+const STATUS_FILTERS: { value: AuctionStatus; label: string }[] = [
+  { value: 'RUNNING', label: 'Ao vivo' },
+  { value: 'SCHEDULED', label: 'Agendados' },
+  { value: 'SOLD', label: 'Vendidos' },
+  { value: 'ENDED_NO_BIDS', label: 'Sem lances' },
+  { value: 'CANCELLED', label: 'Cancelados' },
+];
+const ALL_STATUSES = STATUS_FILTERS.map((f) => f.value);
 
 const PAGE_SIZE = 12;
 
@@ -27,6 +37,11 @@ export default function Listagem() {
     () => catParam.split(',').filter((c): c is Category => (CATEGORIES as string[]).includes(c)),
     [catParam],
   );
+  const statusParam = params.get('estado');
+  const statuses = useMemo(() => {
+    const list = (statusParam ?? '').split(',').filter((v): v is AuctionStatus => (ALL_STATUSES as string[]).includes(v));
+    return list.length ? list : OPEN_STATUSES;
+  }, [statusParam]);
   const [sort, setSort] = useState<AuctionSort>('live');
   const [search, setSearch] = useState(q);
 
@@ -68,7 +83,7 @@ export default function Listagem() {
     setLoading(true);
     setError(null);
     auctionService
-      .list({ q, status: OPEN_STATUSES, category: cats.length ? cats : undefined, sort, page, pageSize: PAGE_SIZE })
+      .list({ q, status: statuses, category: cats.length ? cats : undefined, sort, page, pageSize: PAGE_SIZE })
       .then((r) => {
         if (!active) return;
         setAuctions((prev) => (page === 1 ? r.items : [...prev, ...r.items.filter((a) => !prev.some((p) => p.id === a.id))]));
@@ -79,7 +94,7 @@ export default function Listagem() {
     return () => {
       active = false;
     };
-  }, [q, cats, sort, page, retry]);
+  }, [q, cats, statuses, sort, page, retry]);
 
   // A ordem vem do servidor (?sort=). Leilões que acabaram de encerrar somem sem recarregar.
   const visible = useMemo(
@@ -88,6 +103,13 @@ export default function Listagem() {
   );
 
   const setCats = (next: Category[]) => setParam('categoria', next.length ? next.join(',') : null);
+
+  const toggleStatus = (value: AuctionStatus) => {
+    const next = statuses.includes(value) ? statuses.filter((v) => v !== value) : [...statuses, value];
+    const isDefault = next.length === OPEN_STATUSES.length && OPEN_STATUSES.every((v) => next.includes(v));
+    // Desmarcar tudo volta ao padrão (abertos).
+    setParam('estado', next.length && !isDefault ? ALL_STATUSES.filter((v) => next.includes(v)).join(',') : null);
+  };
 
   return (
     <main className="page">
@@ -123,6 +145,23 @@ export default function Listagem() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+        </div>
+
+        <div className="chips" role="group" aria-label="Filtrar por estado">
+          <span className="small muted" style={{ alignSelf: 'center', marginRight: 4 }}>
+            Estado:
+          </span>
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              className="chip"
+              aria-pressed={statuses.includes(f.value)}
+              onClick={() => toggleStatus(f.value)}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
 
         <div className="row wrap between" style={{ gap: 12 }}>
@@ -191,7 +230,7 @@ export default function Listagem() {
           {!loading && visible.length === 0 && (
             <div className="empty">
               <span style={{ fontWeight: 600, fontSize: 18 }}>Nenhum leilão com esses filtros</span>
-              <span className="small muted">Tente outra categoria ou limpe a busca.</span>
+              <span className="small muted">Tente outra categoria, outro estado ou limpe a busca.</span>
             </div>
           )}
 

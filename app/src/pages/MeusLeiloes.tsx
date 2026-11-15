@@ -1,3 +1,4 @@
+import { Pencil } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Dialog, ErrorState, Photo, Spinner, StatusBadge } from '../components/ui';
@@ -383,9 +384,23 @@ function EditDialog({
                 </select>
               </div>
             </div>
-            <span className="small muted">
-              Para trocar fotos ou dados do item, edite o item (só enquanto faltar mais de 30 min para o início).
-            </span>
+            <div className="stack" style={{ gap: 6 }}>
+              <span className="small muted">
+                Fotos, nome e descrição {a.items.length > 1 ? 'de cada item do lote' : 'do item'} mudam na edição do item
+                (só enquanto faltar mais de 30 min para o início):
+              </span>
+              <span className="row wrap" style={{ gap: 8 }}>
+                {a.items.map((item) => (
+                  <Link
+                    key={item.id}
+                    to={`/itens/${item.id}/editar?voltar=/meus-leiloes`}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    <Pencil size={14} aria-hidden /> {item.name}
+                  </Link>
+                ))}
+              </span>
+            </div>
           </>
         )}
         {error && (

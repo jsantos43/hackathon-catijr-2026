@@ -5,11 +5,11 @@ import AuctionLifecycle from './jobs/AuctionLifecycle.js';
 import { db } from './prisma/db.js';
 import { closeRedis } from './redis/client.js';
 import { createSocketServer } from './socket/index.js';
-import { ensureBucket } from './utils/storage.js';
+import { ensureUploadsDir } from './utils/storage.js';
 
 /**
  * Ponto de entrada da API. A ordem importa:
- *   1. bucket de fotos;
+ *   1. pasta de fotos;
  *   2. regra de queda (cancela o que estava Em andamento) — ANTES de o job começar a
  *      fechar leilões, senão ele os fecharia como Vendidos;
  *   3. HTTP + Socket.IO;
@@ -18,7 +18,7 @@ import { ensureBucket } from './utils/storage.js';
 const httpServer = createServer(app);
 const sockets = createSocketServer(httpServer);
 
-await ensureBucket();
+await ensureUploadsDir();
 await AuctionLifecycle.recoverFromCrash();
 
 httpServer.listen(env.PORT, () => {

@@ -305,7 +305,7 @@ class Bid {
   /** Igual a listRecent, mas responde 404 se o leilão não existir (rota REST). */
   static async listByAuction(auctionId: string, limit: number) {
     const exists = await db.auction.count({ where: { id: auctionId } });
-    if (!exists) throw new NotFound('Auction not found');
+    if (!exists) throw new NotFound('Leilão não encontrado');
 
     return Bid.listRecent(auctionId, limit);
   }

@@ -18,12 +18,17 @@ class ErrorHandler {
     const duplicatedField = uniqueViolationField(err);
 
     if (duplicatedField !== undefined) {
-      const details = duplicatedField ? `${duplicatedField} is already in use` : [];
+      const details =
+        duplicatedField === 'email'
+          ? 'Já existe uma conta com este e-mail'
+          : duplicatedField
+            ? `${duplicatedField} já está em uso`
+            : [];
       return new Conflict(details).send(res);
     }
 
     if (isForeignKeyViolation(err)) {
-      return new Unprocessable('This resource is still referenced by other records').send(res);
+      return new Unprocessable('Esse registro ainda está ligado a outros dados').send(res);
     }
 
     // Arquivo grande demais, fotos demais, campo de arquivo errado...
@@ -33,7 +38,7 @@ class ErrorHandler {
 
     // JSON malformado no corpo da requisição.
     if (err instanceof SyntaxError && 'body' in err) {
-      return new InvalidRequest('Request body is not valid JSON').send(res);
+      return new InvalidRequest('O corpo da requisição não é um JSON válido').send(res);
     }
 
     if (!(err instanceof Base)) {

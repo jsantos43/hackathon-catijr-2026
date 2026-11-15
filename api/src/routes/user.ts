@@ -4,7 +4,7 @@ import Controller from '../controllers/User.js';
 import Auth from '../middlewares/Auth.js';
 import RateLimit from '../middlewares/RateLimit.js';
 import Validate from '../middlewares/Validate.js';
-import { createUserSchema, updateUserSchema, userIdSchema } from '../schemas/User.js';
+import { createUserSchema, searchUsersSchema, updateUserSchema, userIdSchema } from '../schemas/User.js';
 
 const router = Router();
 
@@ -13,6 +13,11 @@ router
     '/user',
     Auth.require('logged'),
     Controller.readSelf // Dados da própria conta (com e-mail)
+  )
+  .get(
+    '/user/search',
+    Validate.query(searchUsersSchema),
+    Controller.search // RF22: comitentes por nome (público). Antes de /user/:id.
   )
   .get(
     '/user/:id',
@@ -38,7 +43,7 @@ router
   .delete(
     '/user',
     Auth.require('logged'),
-    Controller.delete
+    Controller.delete // Anonimiza a conta (histórico de leilões e lances é mantido)
   );
 
 export default router;

@@ -1,12 +1,44 @@
-# Stack de produção: imagens construídas (API Node + front nginx na 8080).
-# Uso: docker compose -f compose.prod.yml --env-file .env up -d --build
+# Stack de produção, dimensionada para uma VM de 1 vCPU e 1 GB de RAM.
+# Uso: docker compose -f compose.prod.yml --env-file .env up -d
 # O .env de produção é gerado pelo deploy.sh (veja o README/AGENTS.md).
+#
+# Imagens: o GitHub Actions constrói e publica no GHCR (API_IMAGE/APP_IMAGE) e a VM só faz pull.
+# Sem essas variáveis, o deploy.sh constrói aqui mesmo (lento e pesado numa VM pequena).
+#
+# Orçamento de memória (limites; o uso normal fica bem abaixo):
+#   postgres 256 MB · redis 64 MB · api 320 MB · nginx 48 MB  ≈ 690 MB + sistema/Docker.
 name: leilao-prod
+
+x-logging: &logging
+  # Sem limite, os logs do Docker crescem até encher o disco da VM.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    # Ajuste para pouca RAM: buffers pequenos e poucas conexões (a API usa um pool de 5).
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=192MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=20
+      - -c
+      - wal_buffers=4MB
+      - -c
+      - max_wal_size=256MB
+      - -c
+      - checkpoint_completion_target=0.9
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-leilao}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leilao}
@@ -16,57 +48,56 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *logging
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis_data:/data
+    # Só estado temporário das salas (o PostgreSQL é a fonte da verdade e a regra de queda
+    # recria/cancela as salas na subida): sem AOF nem snapshot, nada de escrita em disco.
+    # noeviction: melhor recusar escrita do que apagar o estado de uma sala aberta.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "48mb", "--maxmemory-policy", "noeviction"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 10
-
-  minio:
-    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
-    restart: unless-stopped
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    ports:
-      # As fotos são servidas direto do MinIO para o navegador (S3_PUBLIC_URL).
-      - "${MINIO_API_PORT:-9000}:9000"
-    volumes:
-      - minio_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    logging: *logging
 
   api:
+    image: ${API_IMAGE:-leilao-api:prod}
     build:
       context: ./api
-    image: leilao-api:prod
     restart: unless-stopped
     environment:
       NODE_ENV: production
       PORT: 3333
+      # Teto do heap do Node abaixo do limite do container (sobra para buffers e o processo do Prisma).
+      NODE_OPTIONS: --max-old-space-size=200
       CORS_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
       DATABASE_URL: postgresql://${POSTGRES_USER:-leilao}:${POSTGRES_PASSWORD:-leilao}@postgres:5432/${POSTGRES_DB:-leilao}?schema=public
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-5}
       REDIS_URL: redis://redis:6379
       REDIS_ROOM_TTL_SECONDS: ${REDIS_ROOM_TTL_SECONDS:-86400}
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env de produção}
       ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-900}
       REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-604800}
-      S3_ENDPOINT: http://minio:9000
-      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://localhost:9000}
-      S3_REGION: ${S3_REGION:-us-east-1}
-      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      S3_BUCKET: ${S3_BUCKET:-auction-photos}
-      S3_FORCE_PATH_STYLE: "true"
+      # Fotos no volume "uploads"; o nginx serve ${PUBLIC_URL}/uploads direto dele.
+      UPLOADS_DIR: /data/uploads
+      UPLOADS_PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}/uploads
+      TRUST_PROXY: ${TRUST_PROXY:-loopback, uniquelocal}
+      AUCTION_CANCEL_RUNNING_ON_BOOT: ${AUCTION_CANCEL_RUNNING_ON_BOOT:-true}
       AUCTION_EXTENSION_WINDOW_SECONDS: ${AUCTION_EXTENSION_WINDOW_SECONDS:-120}
       AUCTION_EXTENSION_SECONDS: ${AUCTION_EXTENSION_SECONDS:-120}
       AUCTION_MAX_EXTENSION_SECONDS: ${AUCTION_MAX_EXTENSION_SECONDS:-1800}
@@ -79,32 +110,64 @@ services:
       AUCTION_TICK_MS: ${AUCTION_TICK_MS:-1000}
       AUCTION_MAX_ITEMS: ${AUCTION_MAX_ITEMS:-10}
       ITEM_MIN_PHOTOS: ${ITEM_MIN_PHOTOS:-3}
-      ITEM_MAX_PHOTOS: ${ITEM_MAX_PHOTOS:-10}
+      ITEM_MAX_PHOTOS: ${ITEM_MAX_PHOTOS:-8}
       PHOTO_MAX_BYTES: ${PHOTO_MAX_BYTES:-5242880}
+      # Só usado pela importação única de fotos antigas (scripts/import-minio-photos).
+      MINIO_URL: http://minio:9000/${S3_BUCKET:-auction-photos}
       PRISMA_HIDE_UPDATE_MESSAGE: "1"
+    volumes:
+      - uploads:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3333/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+    logging: *logging
 
   app:
+    image: ${APP_IMAGE:-leilao-app:prod}
     build:
       context: ./app
       args:
         # Mesmo host da API: o nginx da 8080 faz proxy de /user, /auth, /item, /auction e /socket.io.
         VITE_API_URL: ${PUBLIC_URL:-http://localhost:8080}
-        VITE_PENDING_FALLBACK: ${VITE_PENDING_FALLBACK:-true}
-    image: leilao-app:prod
     restart: unless-stopped
     ports:
       - "${APP_PORT:-8080}:8080"
+    volumes:
+      # Fotos servidas pelo nginx, sem passar pelo Node (só leitura).
+      - uploads:/srv/uploads:ro
     depends_on:
       - api
+    deploy:
+      resources:
+        limits:
+          memory: 48M
+    logging: *logging
+
+  # LEGADO: só para importar uma vez as fotos que estavam no MinIO (o deploy.sh faz isso
+  # sozinho se encontrar o volume antigo). Não sobe no `up` normal.
+  minio:
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
+    profiles: ["legado"]
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
 
 volumes:
   postgres_data:
-  redis_data:
+  uploads:
   minio_data:

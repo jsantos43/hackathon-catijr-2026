@@ -1,5 +1,8 @@
 name: Deploy produção
 
+# As imagens são construídas aqui (máquina do GitHub, com memória de sobra) e publicadas no
+# GHCR. A VM (1 vCPU / 1 GB) só baixa as imagens prontas: construir lá estourava a memória.
+
 on:
   push:
     branches: [main]
@@ -9,9 +12,58 @@ concurrency:
   group: deploy-producao
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
+  build:
+    name: Construir imagens
+    runs-on: ubuntu-latest
+    outputs:
+      api_image: ${{ steps.names.outputs.api }}
+      app_image: ${{ steps.names.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Nomes das imagens
+        id: names
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "api=${repo}-api:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "app=${repo}-app:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: API
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          push: true
+          tags: ${{ steps.names.outputs.api }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Front (nginx)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          push: true
+          tags: ${{ steps.names.outputs.app }}
+          build-args: |
+            VITE_API_URL=${{ secrets.PUBLIC_URL }}
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+
   deploy:
     name: Deploy no servidor
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Executar deploy.sh via SSH
@@ -23,9 +75,16 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           command_timeout: 30m
           script_stop: true
-          envs: PUBLIC_URL
+          envs: PUBLIC_URL,API_IMAGE,APP_IMAGE,GHCR_USER,GHCR_TOKEN
           script: |
             cd "${{ secrets.DEPLOY_PATH }}"
+            # O token do job vale só enquanto o job roda; o login é desfeito no fim.
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
             bash deploy.sh
         env:
           PUBLIC_URL: ${{ secrets.PUBLIC_URL }}
+          API_IMAGE: ${{ needs.build.outputs.api_image }}
+          APP_IMAGE: ${{ needs.build.outputs.app_image }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}

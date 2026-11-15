@@ -35,7 +35,7 @@ class RateLimit {
         if (count > max) {
           const retryAfter = ttl > 0 ? ttl : windowSeconds;
           res.setHeader('Retry-After', String(retryAfter));
-          return next(new TooManyRequests(`Try again in ${retryAfter} seconds`));
+          return next(new TooManyRequests(`Tente de novo em ${retryAfter} segundos`));
         }
       } catch (err) {
         // Se o Redis estiver fora, não bloqueia o login de ninguém.

@@ -4,3 +4,6 @@ dist-ssr
 .env
 .env.*
 *.local
+test-results
+playwright-report
+e2e

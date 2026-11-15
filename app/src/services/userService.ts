@@ -11,7 +11,18 @@ export interface UpdateUserData {
   name: string;
 }
 
+/** Resultado da busca de comitentes (RF22). */
+export interface SellerResult extends PublicUser {
+  auctionCount: number;
+}
+
 export const userService = {
+  /** RF22: comitentes pelo nome de exibição (ignora acentos e maiúsculas). */
+  async search(q: string): Promise<SellerResult[]> {
+    const response = await api.get<{ users: SellerResult[] }>('/user/search', { params: { q } });
+    return response.data.users;
+  },
+
   async create(data: CreateUserData): Promise<User> {
     const response = await api.post<{ user: User }>('/user', data);
     return response.data.user;

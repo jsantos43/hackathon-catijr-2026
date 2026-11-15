@@ -2,7 +2,7 @@ import Base, { type ErrorDetails } from './Base.js';
 
 class Unauthorized extends Base {
   constructor(details: ErrorDetails = []) {
-    super("You aren't authorized", 401, 'UNAUTHORIZED', details);
+    super('Você precisa entrar na sua conta', 401, 'UNAUTHORIZED', details);
   }
 }
 

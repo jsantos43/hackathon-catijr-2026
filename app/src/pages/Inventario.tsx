@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Plus } from 'lucide-react';
+import { ArrowRight, Check, Pencil, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { ErrorState, Photo, Spinner } from '../components/ui';
@@ -80,7 +80,8 @@ export default function Inventario() {
                 const on = chosen.includes(i.id);
                 const order = chosen.indexOf(i.id);
                 return (
-                  <button key={i.id} type="button" className="inv-card" aria-pressed={on} onClick={() => toggle(i.id)}>
+                  <div key={i.id} className="inv-wrap">
+                  <button type="button" className="inv-card" aria-pressed={on} onClick={() => toggle(i.id)}>
                     <span className="inv-photo">
                       <Photo src={i.images[0]} alt="" />
                       <span className="inv-check" aria-hidden>
@@ -96,6 +97,8 @@ export default function Inventario() {
                       </span>
                     </span>
                   </button>
+                  <EditLink item={i} />
+                  </div>
                 );
               })}
             </div>
@@ -111,7 +114,8 @@ export default function Inventario() {
               </h2>
               <div className="inv-grid">
                 {unavailable.map((i) => (
-                  <div key={i.id} className="inv-card" data-disabled="true">
+                  <div key={i.id} className="inv-wrap">
+                  <div className="inv-card" data-disabled="true">
                     <span className="inv-photo">
                       <Photo src={i.images[0]} alt="" />
                       <span className="badge inv-reason">{unavailableReason(i)}</span>
@@ -120,6 +124,8 @@ export default function Inventario() {
                       <span className="eyebrow">{CATEGORY_LABEL[i.category]}</span>
                       <span className="inv-name">{i.name}</span>
                     </span>
+                  </div>
+                  <EditLink item={i} />
                   </div>
                 ))}
               </div>
@@ -152,5 +158,19 @@ export default function Inventario() {
         </div>
       )}
     </main>
+  );
+}
+
+/** Atalho para editar o item (nome, descrição, fotos e capa). Fica fora do botão de seleção. */
+function EditLink({ item }: { item: OwnItem }) {
+  return (
+    <Link
+      to={`/itens/${item.id}/editar?voltar=/anunciar`}
+      className="inv-edit"
+      aria-label={`Editar ${item.name}`}
+      title="Editar item"
+    >
+      <Pencil size={15} aria-hidden />
+    </Link>
   );
 }

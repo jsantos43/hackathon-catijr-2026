@@ -1,4 +1,6 @@
-import { Link, useParams } from 'react-router-dom';
+import { Search } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Avatar, ErrorState, PageLoader, Photo, StatusBadge } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { useAsync } from '../hooks/useAsync';
@@ -10,6 +12,8 @@ import type { Auction } from '../types';
 export default function Perfil() {
   const { id = '' } = useParams();
   const { user: me } = useAuth();
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
 
   const { data, error, loading, reload } = useAsync(async () => {
     const [user, running, scheduled, past] = await Promise.all([
@@ -38,6 +42,30 @@ export default function Perfil() {
 
   return (
     <main className="page">
+      <form
+        role="search"
+        className="search-bar"
+        style={{ maxWidth: 480 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (search.trim()) navigate(`/comitentes?q=${encodeURIComponent(search.trim())}`);
+        }}
+      >
+        <div className="search-field">
+          <Search size={18} color="var(--ink-2)" aria-hidden />
+          <label htmlFor="pf-busca" className="sr-only">
+            Buscar comitentes
+          </label>
+          <input
+            id="pf-busca"
+            type="search"
+            placeholder="Buscar comitente pelo nome"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </form>
+
       <section className="panel" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 20 }}>
         <Avatar id={user.id} name={user.name} size={72} />
         <div className="stack" style={{ gap: 2, flex: '1 1 240px' }}>

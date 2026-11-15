@@ -1,6 +1,6 @@
 import { afterAll, vi } from 'vitest';
 
-// Fotos: nos testes nada vai para o MinIO. As chaves são inventadas, mas no formato real.
+// Fotos: nos testes nada é gravado de verdade. As chaves são inventadas, mas no formato real.
 vi.mock('../src/utils/storage.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../src/utils/storage.js')>();
   return {
@@ -9,7 +9,7 @@ vi.mock('../src/utils/storage.js', async (importOriginal) => {
       files.map((_, i) => `items/${itemId}/foto-${i}.png`),
     ),
     deleteObjects: vi.fn(async () => undefined),
-    ensureBucket: vi.fn(async () => undefined),
+    ensureUploadsDir: vi.fn(async () => undefined),
   };
 });
 

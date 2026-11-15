@@ -1,4 +1,4 @@
-import { LogOut, Plus, User as UserIcon } from 'lucide-react';
+import { LogOut, Plus, Settings, User as UserIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -43,6 +43,11 @@ function AccountMenu() {
               <UserIcon size={16} aria-hidden /> Meu perfil público
             </span>
           </Link>
+          <Link role="menuitem" to="/conta" onClick={() => setOpen(false)}>
+            <span className="row" style={{ gap: 8 }}>
+              <Settings size={16} aria-hidden /> Minha conta
+            </span>
+          </Link>
           <button
             role="menuitem"
             type="button"
@@ -75,6 +80,9 @@ export function SiteHeader() {
           <NavLink to="/" end>
             Leilões
           </NavLink>
+          <NavLink to="/comitentes" end>
+            Comitentes
+          </NavLink>
           {isAuthenticated && <NavLink to="/participacoes">Minhas participações</NavLink>}
           {isAuthenticated && <NavLink to="/meus-leiloes">Meus leilões</NavLink>}
         </nav>
@@ -83,7 +91,7 @@ export function SiteHeader() {
             <>
               <Link to="/anunciar" className="btn btn-primary" style={{ height: 40 }}>
                 <Plus size={16} strokeWidth={2.4} aria-hidden />
-                Anunciar item
+                Anunciar<span className="hide-sm"> item</span>
               </Link>
               <AccountMenu />
             </>
